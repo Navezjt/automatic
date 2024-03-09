@@ -4,7 +4,7 @@ from contextlib import nullcontext
 import torch
 import intel_extension_for_pytorch as ipex # pylint: disable=import-error, unused-import
 import numpy as np
-from modules import devices
+from modules import devices, errors
 
 device_supports_fp64 = torch.xpu.has_fp64_dtype()
 
@@ -13,7 +13,7 @@ device_supports_fp64 = torch.xpu.has_fp64_dtype()
 class DummyDataParallel(torch.nn.Module): # pylint: disable=missing-class-docstring, unused-argument, too-few-public-methods
     def __new__(cls, module, device_ids=None, output_device=None, dim=0): # pylint: disable=unused-argument
         if isinstance(device_ids, list) and len(device_ids) > 1:
-            print("IPEX backend doesn't support DataParallel on multiple XPU devices")
+            errors.log.error("IPEX backend doesn't support DataParallel on multiple XPU devices")
         return module.to(devices.device)
 
 def return_null_context(*args, **kwargs): # pylint: disable=unused-argument
@@ -45,7 +45,7 @@ def autocast_init(self, device_type, dtype=None, enabled=True, cache_enabled=Non
 original_interpolate = torch.nn.functional.interpolate
 @wraps(torch.nn.functional.interpolate)
 def interpolate(tensor, size=None, scale_factor=None, mode='nearest', align_corners=None, recompute_scale_factor=None, antialias=False): # pylint: disable=too-many-arguments
-    if antialias or align_corners is not None:
+    if antialias or align_corners is not None or mode == 'bicubic':
         return_device = tensor.device
         return_dtype = tensor.dtype
         return original_interpolate(tensor.to("cpu", dtype=torch.float32), size=size, scale_factor=scale_factor, mode=mode,
@@ -219,7 +219,9 @@ def torch_empty(*args, device=None, **kwargs):
 
 original_torch_randn = torch.randn
 @wraps(torch.randn)
-def torch_randn(*args, device=None, **kwargs):
+def torch_randn(*args, device=None, dtype=None, **kwargs):
+    if dtype == bytes:
+        dtype = None
     if check_device(device):
         return original_torch_randn(*args, device=return_xpu(device), **kwargs)
     else:
@@ -259,11 +261,11 @@ def torch_Generator(device=None):
 
 original_torch_load = torch.load
 @wraps(torch.load)
-def torch_load(f, map_location=None, pickle_module=None, *, weights_only=False, mmap=None, **kwargs):
+def torch_load(f, map_location=None, *args, **kwargs):
     if check_device(map_location):
-        return original_torch_load(f, map_location=return_xpu(map_location), pickle_module=pickle_module, weights_only=weights_only, mmap=mmap, **kwargs)
+        return original_torch_load(f, *args, map_location=return_xpu(map_location), **kwargs)
     else:
-        return original_torch_load(f, map_location=map_location, pickle_module=pickle_module, weights_only=weights_only, mmap=mmap, **kwargs)
+        return original_torch_load(f, *args, map_location=map_location, **kwargs)
 
 
 # Hijack Functions:

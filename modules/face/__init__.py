@@ -45,6 +45,8 @@ class Script(scripts.Script):
     # return signature is array of gradio components
     def ui(self, _is_img2img):
         with gr.Row():
+            gr.HTML("<span>&nbsp Face module</span><br>")
+        with gr.Row():
             mode = gr.Dropdown(label='Mode', choices=['None', 'FaceID', 'FaceSwap', 'InstantID', 'PhotoMaker'], value='None')
         with gr.Group(visible=False) as cfg_faceid:
             with gr.Row():
@@ -70,7 +72,7 @@ class Script(scripts.Script):
                 id_strength = gr.Slider(label='Strength', minimum=0.0, maximum=2.0, step=0.01, value=1.0)
                 id_conditioning = gr.Slider(label='Control', minimum=0.0, maximum=2.0, step=0.01, value=0.5)
             with gr.Row(visible=True):
-                id_cache = gr.Checkbox(label='Cache model', value=True)
+                id_cache = gr.Checkbox(label='Cache model', value=False)
         with gr.Group(visible=False) as cfg_photomaker:
             with gr.Row():
                 gr.HTML('<a href="https://photo-maker.github.io/" target="_blank">&nbsp Tenecent ARC Lab PhotoMaker</a><br>')
@@ -88,6 +90,8 @@ class Script(scripts.Script):
         return [mode, gallery, ip_model, ip_override, ip_cache, ip_strength, ip_structure, id_strength, id_conditioning, id_cache, pm_trigger, pm_strength, pm_start, fs_cache]
 
     def run(self, p: processing.StableDiffusionProcessing, mode, input_images, ip_model, ip_override, ip_cache, ip_strength, ip_structure, id_strength, id_conditioning, id_cache, pm_trigger, pm_strength, pm_start, fs_cache): # pylint: disable=arguments-differ, unused-argument
+        if shared.backend != shared.Backend.DIFFUSERS:
+            return
         if input_images is None or len(input_images) == 0:
             shared.log.error('Face: no init images')
             return None
@@ -101,18 +105,17 @@ class Script(scripts.Script):
                 from modules.api.api import decode_base64_to_image
                 input_images[i] = decode_base64_to_image(image).convert("RGB")
 
-        processed = None
         for i, image in enumerate(input_images):
             if not isinstance(image, Image.Image):
                 input_images[i] = Image.open(image['name'])
-        source_image = input_images[0]
 
+        processed = None
         processing.process_init(p)
         if mode == 'FaceID': # faceid runs as ipadapter in its own pipeline
             from modules.face.insightface import get_app
             app = get_app('buffalo_l')
             from modules.face.faceid import face_id
-            processed_images = face_id(p, app=app, source_image=source_image, model=ip_model, override=ip_override, cache=ip_cache, scale=ip_strength, structure=ip_structure) # run faceid pipeline
+            processed_images = face_id(p, app=app, source_images=input_images, model=ip_model, override=ip_override, cache=ip_cache, scale=ip_strength, structure=ip_structure) # run faceid pipeline
             processed = processing.Processed(p, images_list=processed_images, seed=p.seed, subseed=p.subseed, index_of_first_image=0) # manually created processed object
         elif mode == 'PhotoMaker': # photomaker creates pipeline and triggers original process_images
             from modules.face.photomaker import photo_maker
@@ -121,7 +124,7 @@ class Script(scripts.Script):
             from modules.face.insightface import get_app
             app=get_app('antelopev2')
             from modules.face.instantid import instant_id # instantid creates pipeline and triggers original process_images
-            processed = instant_id(p, app=app, source_image=source_image, strength=id_strength, conditioning=id_conditioning, cache=id_cache)
+            processed = instant_id(p, app=app, source_images=input_images, strength=id_strength, conditioning=id_conditioning, cache=id_cache)
 
         if processed is None: # run normal pipeline
             processed = processing.process_images(p)
@@ -134,7 +137,7 @@ class Script(scripts.Script):
                 for i, image in enumerate(processed.images):
                     info = processing.create_infotext(p, index=i)
                     images.save_image(image, path=p.outpath_samples, seed=p.all_seeds[i], prompt=p.all_prompts[i], info=info, p=p, suffix="-before-faceswap")
-            processed.images = face_swap(p, app=app, input_images=processed.images, source_image=source_image, cache=fs_cache)
+            processed.images = face_swap(p, app=app, input_images=processed.images, source_image=input_images[0], cache=fs_cache)
 
         processed.info = processed.infotext(p, 0)
         processed.infotexts = [processed.info]

@@ -37,6 +37,7 @@ class Script:
     infotext_fields = None
     paste_field_names = None
     section = None
+    standalone = False
 
     def title(self):
         """this function should return the title of the script. This is what will be displayed in the dropdown menu."""
@@ -361,49 +362,6 @@ class ScriptRunner:
             except Exception as e:
                 errors.log.error(f'Script initialize: {path} {e}')
 
-    """
-    def create_script_ui(self, script):
-        import modules.api.models as api_models
-        script.args_from = len(self.inputs)
-        script.args_to = len(self.inputs)
-        controls = wrap_call(script.ui, script.filename, "ui", script.is_img2img)
-        if controls is None:
-            return
-        script.name = wrap_call(script.title, script.filename, "title", default=script.filename).lower()
-        api_args = []
-        for control in controls:
-            if not isinstance(control, gr.components.IOComponent):
-                log.error(f'Invalid script control: "{script.filename}" control={control}')
-                continue
-            control.custom_script_source = os.path.basename(script.filename)
-            arg_info = api_models.ScriptArg(label=control.label or "")
-            for field in ("value", "minimum", "maximum", "step", "choices"):
-                v = getattr(control, field, None)
-                if v is not None:
-                    setattr(arg_info, field, v)
-            api_args.append(arg_info)
-        script.api_info = api_models.ScriptInfo(name=script.name, is_img2img=script.is_img2img, is_alwayson=script.alwayson, args=api_args)
-        if script.infotext_fields is not None:
-            self.infotext_fields += script.infotext_fields
-        if script.paste_field_names is not None:
-            self.paste_field_names += script.paste_field_names
-        self.inputs += controls
-        script.args_to = len(self.inputs)
-
-    def setup_ui_for_section(self, section, scriptlist=None):
-        if scriptlist is None:
-            scriptlist = self.alwayson_scripts
-        for script in scriptlist:
-            if script.alwayson and script.section != section:
-                continue
-            if script.create_group:
-                with gr.Group(visible=script.alwayson) as group:
-                    self.create_script_ui(script)
-                script.group = group
-            else:
-                self.create_script_ui(script)
-    """
-
     def prepare_ui(self):
         self.inputs = [None]
 
@@ -449,16 +407,41 @@ class ScriptRunner:
             inputs_alwayson += [script.alwayson for _ in controls]
             script.args_to = len(inputs)
 
-        dropdown = gr.Dropdown(label="Script", elem_id=f'{parent}_script_list', choices=["None"] + self.titles, value="None", type="index")
-        inputs.insert(0, dropdown)
+        with gr.Row():
+            dropdown = gr.Dropdown(label="Script", elem_id=f'{parent}_script_list', choices=["None"] + self.titles, value="None", type="index")
+            inputs.insert(0, dropdown)
+
+        with gr.Row():
+            for script in self.alwayson_scripts:
+                if not script.standalone:
+                    continue
+                t0 = time.time()
+                with gr.Group(elem_id=f'{parent}_script_{script.title().lower().replace(" ", "_")}', elem_classes=['group-extension']) as group:
+                    create_script_ui(script, inputs, inputs_alwayson)
+                script.group = group
+                time_setup[script.title()] = time_setup.get(script.title(), 0) + (time.time()-t0)
+
+        with gr.Row():
+            with gr.Accordion(label="Extensions", elem_id=f'{parent}_script_alwayson') if accordion else gr.Group():
+                for script in self.alwayson_scripts:
+                    if script.standalone:
+                        continue
+                    t0 = time.time()
+                    with gr.Group(elem_id=f'{parent}_script_{script.title().lower().replace(" ", "_")}', elem_classes=['group-extension']) as group:
+                        create_script_ui(script, inputs, inputs_alwayson)
+                    script.group = group
+                    time_setup[script.title()] = time_setup.get(script.title(), 0) + (time.time()-t0)
+
         for script in self.selectable_scripts:
-            with gr.Group(visible=False) as group:
+            with gr.Group(elem_id=f'{parent}_script_{script.title().lower().replace(" ", "_")}', elem_classes=['group-scripts'], visible=False) as group:
                 t0 = time.time()
                 create_script_ui(script, inputs, inputs_alwayson)
                 time_setup[script.title()] = time_setup.get(script.title(), 0) + (time.time()-t0)
                 script.group = group
 
         def select_script(script_index):
+            if script_index is None:
+                return [gr.update(visible=False) for script in self.selectable_scripts]
             selected_script = self.selectable_scripts[script_index - 1] if script_index > 0 else None
             return [gr.update(visible=selected_script == s) for s in self.selectable_scripts]
 
@@ -480,14 +463,6 @@ class ScriptRunner:
                 return gr.update(visible=visibility)
             else:
                 return gr.update(visible=False)
-
-        with gr.Accordion(label="Extensions", elem_id=f'{parent}_script_alwayson') if accordion else gr.Group():
-            for script in self.alwayson_scripts:
-                t0 = time.time()
-                with gr.Group(elem_id=f'{parent}_script_{script.title().lower().replace(" ", "_")}', elem_classes=['extension-script']) as group:
-                    create_script_ui(script, inputs, inputs_alwayson)
-                script.group = group
-                time_setup[script.title()] = time_setup.get(script.title(), 0) + (time.time()-t0)
 
         self.infotext_fields.append( (dropdown, lambda x: gr.update(value=x.get('Script', 'None'))) )
         self.infotext_fields.extend( [(script.group, onload_script_visibility) for script in self.selectable_scripts] )
@@ -661,43 +636,3 @@ def reload_script_body_only():
     scripts_txt2img.reload_sources(cache)
     scripts_img2img.reload_sources(cache)
     scripts_control.reload_sources(cache)
-
-
-def add_classes_to_gradio_component(comp):
-    """
-    this adds gradio-* to the component for css styling (ie gradio-button to gr.Button), as well as some others
-    """
-    elem_classes = []
-    if hasattr(comp, "elem_classes"):
-        elem_classes = comp.elem_classes
-    if elem_classes is None:
-        elem_classes = []
-    comp.elem_classes = [f"gradio-{comp.get_block_name()}", *(comp.elem_classes or [])]
-    if getattr(comp, 'multiselect', False):
-        comp.elem_classes.append('multiselect')
-
-
-def IOComponent_init(self, *args, **kwargs):
-    if scripts_current is not None:
-        scripts_current.before_component(self, **kwargs)
-    script_callbacks.before_component_callback(self, **kwargs)
-    res = original_IOComponent_init(self, *args, **kwargs) # pylint: disable=assignment-from-no-return
-    add_classes_to_gradio_component(self)
-    script_callbacks.after_component_callback(self, **kwargs)
-    if scripts_current is not None:
-        scripts_current.after_component(self, **kwargs)
-    return res
-
-
-original_IOComponent_init = gr.components.IOComponent.__init__
-gr.components.IOComponent.__init__ = IOComponent_init
-
-
-def BlockContext_init(self, *args, **kwargs):
-    res = original_BlockContext_init(self, *args, **kwargs) # pylint: disable=assignment-from-no-return
-    add_classes_to_gradio_component(self)
-    return res
-
-
-original_BlockContext_init = gr.blocks.BlockContext.__init__
-gr.blocks.BlockContext.__init__ = BlockContext_init

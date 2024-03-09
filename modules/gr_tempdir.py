@@ -2,7 +2,6 @@ import os
 import tempfile
 from collections import namedtuple
 from pathlib import Path
-import gradio as gr
 from PIL import Image, PngImagePlugin
 from modules import shared, errors, paths
 
@@ -45,6 +44,7 @@ def pil_to_temp_file(self, img: Image, dir: str, format="png") -> str: # pylint:
     filename = str(temp_dir / f"image.{format}")
     img.save(filename, pnginfo=gr.processing_utils.get_pil_metadata(img))
     """
+    folder = dir
     already_saved_as = getattr(img, 'already_saved_as', None)
     exists = os.path.isfile(already_saved_as) if already_saved_as is not None else False
     debug(f'Image lookup: {already_saved_as} exists={exists}')
@@ -55,17 +55,17 @@ def pil_to_temp_file(self, img: Image, dir: str, format="png") -> str: # pylint:
         debug(f'Image registered: {name}')
         return name
     if shared.opts.temp_dir != "":
-        dir = shared.opts.temp_dir
+        folder = shared.opts.temp_dir
     use_metadata = False
     metadata = PngImagePlugin.PngInfo()
     for key, value in img.info.items():
         if isinstance(key, str) and isinstance(value, str):
             metadata.add_text(key, value)
             use_metadata = True
-    if not os.path.exists(dir):
-        os.makedirs(dir, exist_ok=True)
-        shared.log.debug(f'Created temp folder: path="{dir}"')
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=dir) as tmp:
+    if not os.path.exists(folder):
+        os.makedirs(folder, exist_ok=True)
+        shared.log.debug(f'Created temp folder: path="{folder}"')
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=folder) as tmp:
         name = tmp.name
         img.save(name, pnginfo=(metadata if use_metadata else None))
         img.already_saved_as = name
@@ -79,7 +79,6 @@ def pil_to_temp_file(self, img: Image, dir: str, format="png") -> str: # pylint:
 
 
 # override save to file function so that it also writes PNG info
-gr.components.IOComponent.pil_to_temp_file = pil_to_temp_file # gradio >=3.32.0
 
 def on_tmpdir_changed():
     if shared.opts.temp_dir == "":

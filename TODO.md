@@ -4,13 +4,19 @@ Main ToDo list can be found at [GitHub projects](https://github.com/users/vladma
 
 ## Candidates for next release
 
-- multi-ipadapter: <https://github.com/huggingface/diffusers/pull/6573>
-- control second pass: <https://github.com/vladmandic/automatic/issues/2783>  
+- defork
+- stable diffusion 3.0
+- ipadapter masking: <https://github.com/huggingface/diffusers/pull/6847>
+- x-adapter: <https://github.com/showlab/X-Adapter>
+- async lowvram: <https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/14855>
+- init latents: variations, tiling, img2img
 - diffusers public callbacks  
-- image2video: pia and vgen pipelines  
-- video2video
+- remove builtin: controlnet
+- remove builtin: image-browser
+
+## Control missing features
+
+- second pass: <https://github.com/vladmandic/automatic/issues/2783>  
 - control api  
 - masking api  
-- preprocess api  
-- remove kohya from submodules  
-- bind panZoom to control input
+- preprocess api

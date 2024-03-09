@@ -7,7 +7,12 @@ import logging
 import platform
 import subprocess
 import cProfile
-import pkg_resources
+
+try:
+    import pkg_resources # python 3.12 no longer has it built-in
+except ImportError:
+    stdout = subprocess.run(f'"{sys.executable}" -m pip install setuptools', shell=True, check=False, env=os.environ, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    import pkg_resources
 
 
 class Dot(dict): # dot notation access to dictionary attributes
@@ -163,8 +168,11 @@ def installed(package, friendly: str = None, reload = False, quiet = False):
     ok = True
     try:
         if reload:
-            import imp # pylint: disable=deprecated-module
-            imp.reload(pkg_resources)
+            try:
+                import imp # pylint: disable=deprecated-module
+                imp.reload(pkg_resources)
+            except Exception:
+                pass
         if friendly:
             pkgs = friendly.split()
         else:
@@ -201,10 +209,15 @@ def installed(package, friendly: str = None, reload = False, quiet = False):
         return False
 
 
-def uninstall(package):
-    if installed(package, package, quiet=True):
-        log.warning(f'Uninstalling: {package}')
-        pip(f"uninstall {package} --yes --quiet", ignore=True, quiet=True)
+def uninstall(package, quiet = False):
+    packages = package if isinstance(package, list) else [package]
+    res = ''
+    for p in packages:
+        if installed(p, p, quiet=True):
+            if not quiet:
+                log.warning(f'Uninstalling: {p}')
+            res += pip(f"uninstall {p} --yes --quiet", ignore=True, quiet=True)
+    return res
 
 
 def pip(arg: str, ignore: bool = False, quiet: bool = False):
@@ -229,11 +242,18 @@ def pip(arg: str, ignore: bool = False, quiet: bool = False):
 
 # install package using pip if not already installed
 def install(package, friendly: str = None, ignore: bool = False):
+    res = ''
     if args.reinstall or args.upgrade:
         global quick_allowed # pylint: disable=global-statement
         quick_allowed = False
     if args.reinstall or not installed(package, friendly):
-        pip(f"install --upgrade {package}", ignore=ignore)
+        res = pip(f"install --upgrade {package}", ignore=ignore)
+        try:
+            import imp # pylint: disable=deprecated-module
+            imp.reload(pkg_resources)
+        except Exception:
+            pass
+    return res
 
 
 # execute git command
@@ -362,6 +382,12 @@ def check_python():
         log.debug(f'Git {git_version.replace("git version", "").strip()}')
 
 
+# check onnx version
+def check_onnx():
+    if not installed('onnxruntime', quiet=True) and not installed('onnxruntime-gpu', quiet=True): # allow either
+        install('onnxruntime', 'onnxruntime', ignore=True)
+
+
 # check torch version
 def check_torch():
     if args.skip_torch:
@@ -379,8 +405,20 @@ def check_torch():
     log.debug(f'Torch allowed: cuda={allow_cuda} rocm={allow_rocm} ipex={allow_ipex} diml={allow_directml} openvino={allow_openvino}')
     torch_command = os.environ.get('TORCH_COMMAND', '')
     xformers_package = os.environ.get('XFORMERS_PACKAGE', 'none')
-    if not installed('onnxruntime', quiet=True) and not installed('onnxruntime-gpu', quiet=True): # allow either
-        install('onnxruntime', 'onnxruntime', ignore=True)
+    zluda_need_dll_patch = False
+
+    def is_rocm_available():
+        if not allow_rocm:
+            return False
+        if installed('torch-directml'):
+            log.debug('DirectML installation is detected. Skipping HIP SDK check.')
+            return False
+        if platform.system() == 'Windows':
+            hip_path = os.environ.get('HIP_PATH', None)
+            return hip_path is not None and os.path.exists(os.path.join(hip_path, 'bin'))
+        else:
+            return shutil.which('rocminfo') is not None or os.path.exists('/opt/rocm/bin/rocminfo') or os.path.exists('/dev/kfd')
+
     if torch_command != '':
         pass
     elif allow_cuda and (shutil.which('nvidia-smi') is not None or args.use_xformers or os.path.exists(os.path.join(os.environ.get('SystemRoot') or r'C:\Windows', 'System32', 'nvidia-smi.exe'))):
@@ -391,17 +429,24 @@ def check_torch():
             torch_command = os.environ.get('TORCH_COMMAND', 'torch torchvision --index-url https://download.pytorch.org/whl/cu118')
         xformers_package = os.environ.get('XFORMERS_PACKAGE', '--pre xformers' if opts.get('cross_attention_optimization', '') == 'xFormers' else 'none')
         install('onnxruntime-gpu', 'onnxruntime-gpu', ignore=True)
-    elif allow_rocm and (shutil.which('rocminfo') is not None or os.path.exists('/opt/rocm/bin/rocminfo') or os.path.exists('/dev/kfd')):
+    elif is_rocm_available():
+        is_windows = platform.system() == 'Windows'
         log.info('AMD ROCm toolkit detected')
         os.environ.setdefault('PYTORCH_HIP_ALLOC_CONF', 'garbage_collection_threshold:0.8,max_split_size_mb:512')
-        os.environ.setdefault('TENSORFLOW_PACKAGE', 'tensorflow-rocm')
+        if not is_windows:
+            os.environ.setdefault('TENSORFLOW_PACKAGE', 'tensorflow-rocm')
         try:
-            command = subprocess.run('rocm_agent_enumerator', shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            amd_gpus = command.stdout.decode(encoding="utf8", errors="ignore").split('\n')
-            amd_gpus = [x for x in amd_gpus if x and x != 'gfx000']
+            if is_windows:
+                command = subprocess.run('hipinfo', shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                amd_gpus = command.stdout.decode(encoding="utf8", errors="ignore").split('\n')
+                amd_gpus = [x.split(' ')[-1].strip() for x in amd_gpus if x.startswith('gcnArchName:')]
+            else:
+                command = subprocess.run('rocm_agent_enumerator', shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                amd_gpus = command.stdout.decode(encoding="utf8", errors="ignore").split('\n')
+                amd_gpus = [x for x in amd_gpus if x and x != 'gfx000']
             log.debug(f'ROCm agents detected: {amd_gpus}')
         except Exception as e:
-            log.debug(f'Run rocm_agent_enumerator failed: {e}')
+            log.debug(f'ROCm agent enumerator failed: {e}')
             amd_gpus = []
 
         hip_visible_devices = [] # use the first available amd gpu by default
@@ -433,22 +478,45 @@ def check_torch():
         except Exception as e:
             log.debug(f'ROCm hipconfig failed: {e}')
             rocm_ver = None
-        if rocm_ver in {"5.7"}:
-            torch_command = os.environ.get('TORCH_COMMAND', f'torch torchvision --pre --index-url https://download.pytorch.org/whl/nightly/rocm{rocm_ver}')
-        elif rocm_ver in {"5.5", "5.6"}:
-            torch_command = os.environ.get('TORCH_COMMAND', f'torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm{rocm_ver}')
+        if args.use_zluda:
+            torch_command = os.environ.get('TORCH_COMMAND', 'torch==2.2.0 torchvision --index-url https://download.pytorch.org/whl/cu118')
+            log.warning("ZLUDA support: experimental")
+            zluda_need_dll_patch = is_windows and not installed('torch')
+            zluda_path = find_zluda()
+            if zluda_path is None:
+                import urllib.request
+                if is_windows:
+                    import zipfile
+                    archive_type = zipfile.ZipFile
+                    zluda_url = 'https://github.com/lshqqytiger/ZLUDA/releases/download/v3.5-win/ZLUDA-windows-amd64.zip'
+                else:
+                    import tarfile
+                    archive_type = tarfile.TarFile
+                    zluda_url = 'https://github.com/vosen/ZLUDA/releases/download/v3/zluda-3-linux.tar.gz'
+                urllib.request.urlretrieve(zluda_url, '_zluda')
+                with archive_type('_zluda', 'r') as f:
+                    f.extractall('.zluda')
+                zluda_path = os.path.abspath('./.zluda')
+                os.remove('_zluda')
+            log.debug(f'Found ZLUDA in {zluda_path}')
+            paths = os.environ.get('PATH', '.')
+            if zluda_path not in paths:
+                os.environ['PATH'] = paths + ';' + zluda_path
+        elif is_windows: # TODO TBD after ROCm for Windows is released
+            log.warning("HIP SDK is detected, but no Torch release for Windows available")
+            log.info("For ZLUDA support specify '--use-zluda'")
+            log.info('Using CPU-only torch')
+            torch_command = os.environ.get('TORCH_COMMAND', 'torch torchvision')
         else:
-            # ROCm 5.5 is oldest for PyTorch 2.1
-            torch_command = os.environ.get('TORCH_COMMAND', 'torch torchvision --index-url https://download.pytorch.org/whl/rocm5.5')
+            if rocm_ver in {"5.7", "6.0"}:
+                torch_command = os.environ.get('TORCH_COMMAND', f'torch torchvision --pre --index-url https://download.pytorch.org/whl/nightly/rocm{rocm_ver}')
+            elif rocm_ver in {"5.5", "5.6"}:
+                torch_command = os.environ.get('TORCH_COMMAND', f'torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm{rocm_ver}')
+            else:
+                torch_command = os.environ.get('TORCH_COMMAND', 'torch torchvision --index-url https://download.pytorch.org/whl/rocm5.5') # ROCm 5.5 is oldest for PyTorch 2.1
+            if rocm_ver is not None:
+                install(os.environ.get('ONNXRUNTIME_PACKAGE', get_onnxruntime_source_for_rocm(arr)), "onnxruntime-training built with ROCm", ignore=True)
         xformers_package = os.environ.get('XFORMERS_PACKAGE', 'none')
-        if rocm_ver is not None:
-            install(os.environ.get('ONNXRUNTIME_PACKAGE', get_onnxruntime_source_for_rocm(arr)), "onnxruntime-training built with ROCm", ignore=True)
-            try:
-                import onnxruntime
-                if "ROCMExecutionProvider" not in onnxruntime.get_available_providers():
-                    log.warning('Failed to automatically install onxnruntime package for ROCm. Please manually install it if you need.')
-            except Exception:
-                pass
     elif allow_ipex and (args.use_ipex or shutil.which('sycl-ls') is not None or shutil.which('sycl-ls.exe') is not None or os.environ.get('ONEAPI_ROOT') is not None or os.path.exists('/opt/intel/oneapi') or os.path.exists("C:/Program Files (x86)/Intel/oneAPI") or os.path.exists("C:/oneAPI")):
         args.use_ipex = True # pylint: disable=attribute-defined-outside-init
         log.info('Intel OneAPI Toolkit detected')
@@ -482,10 +550,10 @@ def check_torch():
         install('onnxruntime-openvino', 'onnxruntime-openvino', ignore=True)
     elif allow_openvino and args.use_openvino:
         log.info('Using OpenVINO')
-        torch_command = os.environ.get('TORCH_COMMAND', 'torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cpu')
+        torch_command = os.environ.get('TORCH_COMMAND', 'torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cpu')
         install(os.environ.get('OPENVINO_PACKAGE', 'openvino==2023.3.0'), 'openvino')
-        install('onnxruntime-openvino', 'onnxruntime-openvino', ignore=True) # TODO openvino: numpy version conflicts with tensorflow and doesn't support Python 3.11
-        install('nncf==2.8.0', 'nncf')
+        install('onnxruntime-openvino', 'onnxruntime-openvino', ignore=True)
+        install('nncf==2.8.1', 'nncf')
         os.environ.setdefault('PYTORCH_TRACING_MODE', 'TORCHFX')
         os.environ.setdefault('NEOReadDebugKeys', '1')
         os.environ.setdefault('ClDeviceGlobalMemSizeAvailablePercent', '100')
@@ -500,11 +568,15 @@ def check_torch():
                 install(torch_command, 'torch torchvision')
             install('onnxruntime-directml', 'onnxruntime-directml', ignore=True)
         else:
+            if args.use_zluda:
+                log.warning("ZLUDA failed to initialize: no HIP SDK found")
             log.info('Using CPU-only Torch')
             torch_command = os.environ.get('TORCH_COMMAND', 'torch torchvision')
     if 'torch' in torch_command and not args.version:
-        # log.info('Installing torch - this may take a while')
+        log.debug(f'Installing torch: {torch_command}')
         install(torch_command, 'torch torchvision')
+        if zluda_need_dll_patch:
+            patch_zluda()
     else:
         try:
             import torch
@@ -555,6 +627,8 @@ def check_torch():
         log.debug(f'Cannot install xformers package: {e}')
     if opts.get('cuda_compile_backend', '') == 'hidet':
         install('hidet', 'hidet')
+    if opts.get('cuda_compile_backend', '') == 'deep-cache':
+        install('DeepCache')
     if opts.get('nncf_compress_weights', False) and not args.use_openvino:
         install('nncf==2.7.0', 'nncf')
     if args.profile:
@@ -613,10 +687,11 @@ def run_extension_installer(folder):
         env = os.environ.copy()
         env['PYTHONPATH'] = os.path.abspath(".")
         result = subprocess.run(f'"{sys.executable}" "{path_installer}"', shell=True, env=env, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=folder)
+        txt = result.stdout.decode(encoding="utf8", errors="ignore")
+        debug(f'Extension installer: file={path_installer} {txt}')
         if result.returncode != 0:
             global errors # pylint: disable=global-statement
             errors += 1
-            txt = result.stdout.decode(encoding="utf8", errors="ignore")
             if len(result.stderr) > 0:
                 txt = txt + '\n' + result.stderr.decode(encoding="utf8", errors="ignore")
             log.error(f'Error running extension installer: {path_installer}')
@@ -843,21 +918,45 @@ def get_version():
 
 
 def get_onnxruntime_source_for_rocm(rocm_ver):
-    ort_version = "1.16.3"
-
-    try:
-        import onnxruntime
-        ort_version = onnxruntime.__version__
-    except ImportError:
-        pass
-
+    ort_version = "1.16.3" # hardcoded
     cp_str = f"{sys.version_info.major}{sys.version_info.minor}"
-
     if rocm_ver is None:
         command = subprocess.run('hipconfig --version', shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         rocm_ver = command.stdout.decode(encoding="utf8", errors="ignore").split('.')
+    if "linux" in sys.platform:
+        return f"https://download.onnxruntime.ai/onnxruntime_training-{ort_version}%2Brocm{rocm_ver[0]}{rocm_ver[1]}-cp{cp_str}-cp{cp_str}-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+    else:
+        return 'onnxruntime-gpu'
 
-    return f"https://download.onnxruntime.ai/onnxruntime_training-{ort_version}%2Brocm{rocm_ver[0]}{rocm_ver[1]}-cp{cp_str}-cp{cp_str}-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+
+def find_zluda():
+    zluda_path = os.environ.get('ZLUDA', None)
+    if zluda_path is None:
+        paths = os.environ.get('PATH', '').split(';')
+        for path in paths:
+            if os.path.exists(os.path.join(path, 'zluda_redirect.dll')):
+                zluda_path = path
+                break
+    return zluda_path
+
+
+def patch_zluda():
+    zluda_path = find_zluda()
+    if zluda_path is None:
+        log.warning('Failed to automatically patch torch with ZLUDA. Could not find ZLUDA from PATH.')
+        return
+    venv_dir = os.environ.get('VENV_DIR', os.path.dirname(shutil.which('python')))
+    dlls_to_patch = {
+        'cublas.dll': 'cublas64_11.dll',
+        #'cudnn.dll': 'cudnn64_8.dll',
+        'cusparse.dll': 'cusparse64_11.dll',
+        'nvrtc.dll': 'nvrtc64_112_0.dll',
+    }
+    try:
+        for k, v in dlls_to_patch.items():
+            shutil.copyfile(os.path.join(zluda_path, k), os.path.join(venv_dir, 'Lib', 'site-packages', 'torch', 'lib', v))
+    except Exception as e:
+        log.warning(f'ZLUDA: failed to automatically patch torch: {e}')
 
 
 # check version of the main repo and optionally upgrade it
@@ -954,8 +1053,6 @@ def check_timestamp():
 
 def add_args(parser):
     group = parser.add_argument_group('Setup options')
-    group.add_argument("--log", type=str, default=os.environ.get("SD_LOG", None), help="Set log file, default: %(default)s")
-    group.add_argument('--debug', default = os.environ.get("SD_DEBUG",False), action='store_true', help = "Run installer with debug logging, default: %(default)s")
     group.add_argument('--reset', default = os.environ.get("SD_RESET",False), action='store_true', help = "Reset main repository to latest version, default: %(default)s")
     group.add_argument('--upgrade', default = os.environ.get("SD_UPGRADE",False), action='store_true', help = "Upgrade main repository to latest version, default: %(default)s")
     group.add_argument('--requirements', default = os.environ.get("SD_REQUIREMENTS",False), action='store_true', help = "Force re-check of requirements, default: %(default)s")
@@ -965,18 +1062,27 @@ def add_args(parser):
     group.add_argument("--use-ipex", default = os.environ.get("SD_USEIPEX",False), action='store_true', help="Force use Intel OneAPI XPU backend, default: %(default)s")
     group.add_argument("--use-cuda", default = os.environ.get("SD_USECUDA",False), action='store_true', help="Force use nVidia CUDA backend, default: %(default)s")
     group.add_argument("--use-rocm", default = os.environ.get("SD_USEROCM",False), action='store_true', help="Force use AMD ROCm backend, default: %(default)s")
+    group.add_argument('--use-zluda', default=os.environ.get("SD_USEZLUDA", False), action='store_true', help = "Force use ZLUDA, AMD GPUs only, default: %(default)s")
     group.add_argument("--use-xformers", default = os.environ.get("SD_USEXFORMERS",False), action='store_true', help="Force use xFormers cross-optimization, default: %(default)s")
     group.add_argument('--skip-requirements', default = os.environ.get("SD_SKIPREQUIREMENTS",False), action='store_true', help = "Skips checking and installing requirements, default: %(default)s")
     group.add_argument('--skip-extensions', default = os.environ.get("SD_SKIPEXTENSION",False), action='store_true', help = "Skips running individual extension installers, default: %(default)s")
     group.add_argument('--skip-git', default = os.environ.get("SD_SKIPGIT",False), action='store_true', help = "Skips running all GIT operations, default: %(default)s")
     group.add_argument('--skip-torch', default = os.environ.get("SD_SKIPTORCH",False), action='store_true', help = "Skips running Torch checks, default: %(default)s")
     group.add_argument('--skip-all', default = os.environ.get("SD_SKIPALL",False), action='store_true', help = "Skips running all checks, default: %(default)s")
+    group.add_argument('--skip-env', default = os.environ.get("SD_SKIPENV",False), action='store_true', help = "Skips setting of env variables during startup, default: %(default)s")
     group.add_argument('--experimental', default = os.environ.get("SD_EXPERIMENTAL",False), action='store_true', help = "Allow unsupported versions of libraries, default: %(default)s")
     group.add_argument('--reinstall', default = os.environ.get("SD_REINSTALL",False), action='store_true', help = "Force reinstallation of all requirements, default: %(default)s")
     group.add_argument('--test', default = os.environ.get("SD_TEST",False), action='store_true', help = "Run test only and exit")
     group.add_argument('--version', default = False, action='store_true', help = "Print version information")
     group.add_argument('--ignore', default = os.environ.get("SD_IGNORE",False), action='store_true', help = "Ignore any errors and attempt to continue")
     group.add_argument('--safe', default = os.environ.get("SD_SAFE",False), action='store_true', help = "Run in safe mode with no user extensions")
+
+    group = parser.add_argument_group('Logging options')
+    group.add_argument("--log", type=str, default=os.environ.get("SD_LOG", None), help="Set log file, default: %(default)s")
+    group.add_argument('--debug', default = os.environ.get("SD_DEBUG",False), action='store_true', help = "Run installer with debug logging, default: %(default)s")
+    group.add_argument("--profile", default=os.environ.get("SD_PROFILE", False), action='store_true', help="Run profiler, default: %(default)s")
+    group.add_argument('--docs', default=os.environ.get("SD_DOCS", False), action='store_true', help = "Mount API docs, default: %(default)s")
+    group.add_argument("--api-log", default=os.environ.get("SD_APILOG", False), action='store_true', help="Enable logging of all API requests, default: %(default)s")
 
 
 def parse_args(parser):
@@ -1002,7 +1108,7 @@ def extensions_preload(parser):
             preload_extensions(ext_dir, parser)
             t1 = time.time()
             preload_time[ext_dir] = round(t1 - t0, 2)
-        log.info(f'Extension preload: {preload_time}')
+        log.debug(f'Extension preload: {preload_time}')
     except Exception:
         log.error('Error running extension preloading')
     if args.profile:

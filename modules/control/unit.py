@@ -31,11 +31,12 @@ class Unit(): # mashup of gradio controls and mapping to actual implementation c
                  model_strength = None,
                  preview_process = None,
                  image_upload = None,
+                 image_reuse = None,
                  image_preview = None,
                  control_start = None,
                  control_end = None,
                  result_txt = None,
-                 extra_controls: list = [], # noqa B006
+                 extra_controls: list = [],
         ):
         self.enabled = enabled or False
         self.type = unit_type
@@ -97,6 +98,8 @@ class Unit(): # mashup of gradio controls and mapping to actual implementation c
             self.adain_weight = c4
 
         def upload_image(image_file):
+            if image_file is None:
+                return gr.update(value=None)
             try:
                 self.process.override = Image.open(image_file.name)
                 self.override = self.process.override
@@ -105,6 +108,12 @@ class Unit(): # mashup of gradio controls and mapping to actual implementation c
             except Exception as e:
                 log.error(f'Control process upload image failed: path="{image_file.name}" error={e}')
                 return gr.update(visible=False, value=None)
+
+        def reuse_image(image):
+            log.debug(f'Control process reuse image: {image}')
+            self.process.override = image
+            self.override = self.process.override
+            return gr.update(visible=self.process.override is not None, value=self.process.override)
 
         # actual init
         if self.type == 't2i adapter':
@@ -162,6 +171,8 @@ class Unit(): # mashup of gradio controls and mapping to actual implementation c
             preview_btn.click(fn=self.process.preview, inputs=[], outputs=[preview_process]) # return list of images for gallery
         if image_upload is not None:
             image_upload.upload(fn=upload_image, inputs=[image_upload], outputs=[image_preview]) # return list of images for gallery
+        if image_reuse is not None:
+            image_reuse.click(fn=reuse_image, inputs=[preview_process], outputs=[image_preview]) # return list of images for gallery
         if control_start is not None and control_end is not None:
             control_start.change(fn=control_change, inputs=[control_start, control_end])
             control_end.change(fn=control_change, inputs=[control_start, control_end])

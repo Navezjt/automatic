@@ -13,7 +13,7 @@ import torch # pylint: disable=wrong-import-order
 from modules import timer, errors, paths # pylint: disable=unused-import
 from installer import log, git_commit, custom_excepthook
 import ldm.modules.encoders.modules # pylint: disable=W0611,C0411,E0401
-from modules import shared, extensions, ui_tempdir, modelloader # pylint: disable=ungrouped-imports
+from modules import shared, extensions, gr_tempdir, modelloader # pylint: disable=ungrouped-imports
 from modules import extra_networks, ui_extra_networks # pylint: disable=ungrouped-imports
 from modules.paths import create_paths
 from modules.call_queue import queue_lock, wrap_queued_call, wrap_gradio_gpu_call # pylint: disable=W0611,C0411,C0412
@@ -105,13 +105,13 @@ def initialize():
     t_timer, t_total = modules.scripts.load_scripts()
     timer.startup.record("extensions")
     timer.startup.records["extensions"] = t_total # scripts can reset the time
-    log.info(f'Extensions init time: {t_timer.summary()}')
+    log.debug(f'Extensions init time: {t_timer.summary()}')
 
     modelloader.load_upscalers()
     timer.startup.record("upscalers")
 
     shared.opts.onchange("sd_vae", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
-    shared.opts.onchange("temp_dir", ui_tempdir.on_tmpdir_changed)
+    shared.opts.onchange("temp_dir", gr_tempdir.on_tmpdir_changed)
     timer.startup.record("onchange")
 
     modules.textual_inversion.textual_inversion.list_textual_inversion_templates()
@@ -212,7 +212,7 @@ def start_common():
     async_policy()
     initialize()
     if shared.opts.clean_temp_dir_at_start:
-        ui_tempdir.cleanup_tmpdr()
+        gr_tempdir.cleanup_tmpdr()
         timer.startup.record("cleanup")
 
 
@@ -246,6 +246,8 @@ def start_ui():
     allowed_paths = [os.path.dirname(__file__)]
     if cmd_opts.data_dir is not None and os.path.isdir(cmd_opts.data_dir):
         allowed_paths.append(cmd_opts.data_dir)
+    if cmd_opts.allowed_paths is not None:
+        allowed_paths += [p for p in cmd_opts.allowed_paths if os.path.isdir(p)]
     shared.log.debug(f'Root paths: {allowed_paths}')
     with contextlib.redirect_stdout(stdout):
         app, local_url, share_url = shared.demo.launch( # app is FastAPI(Starlette) instance
@@ -267,7 +269,7 @@ def start_ui():
             _frontend=True and cmd_opts.share,
         )
     if cmd_opts.data_dir is not None:
-        ui_tempdir.register_tmp_file(shared.demo, os.path.join(cmd_opts.data_dir, 'x'))
+        gr_tempdir.register_tmp_file(shared.demo, os.path.join(cmd_opts.data_dir, 'x'))
     shared.log.info(f'Local URL: {local_url}')
     if cmd_opts.docs:
         shared.log.info(f'API Docs: {local_url[:-1]}/docs') # pylint: disable=unsubscriptable-object

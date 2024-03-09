@@ -438,12 +438,11 @@ def list_available_networks():
     forbidden_network_aliases.clear()
     available_network_hash_lookup.clear()
     forbidden_network_aliases.update({"none": 1, "Addams": 1})
-    os.makedirs(shared.cmd_opts.lora_dir, exist_ok=True)
     directories = []
     if os.path.exists(shared.cmd_opts.lora_dir):
         directories.append(shared.cmd_opts.lora_dir)
     else:
-        shared.log.warning('LoRA directory not found: path="{shared.cmd_opts.lora_dir}"')
+        shared.log.warning(f'LoRA directory not found: path="{shared.cmd_opts.lora_dir}"')
     if os.path.exists(shared.cmd_opts.lyco_dir) and shared.cmd_opts.lyco_dir != shared.cmd_opts.lora_dir:
         directories.append(shared.cmd_opts.lyco_dir)
 
@@ -456,8 +455,10 @@ def list_available_networks():
             available_networks[entry.name] = entry
             if entry.alias in available_network_aliases:
                 forbidden_network_aliases[entry.alias.lower()] = 1
-            available_network_aliases[entry.name] = entry
-            available_network_aliases[entry.alias] = entry
+            if shared.opts.lora_preferred_name == 'filename':
+                available_network_aliases[entry.name] = entry
+            else:
+                available_network_aliases[entry.alias] = entry
             if entry.shorthash:
                 available_network_hash_lookup[entry.shorthash] = entry
         except OSError as e:  # should catch FileNotFoundError and PermissionError etc.

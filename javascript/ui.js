@@ -66,7 +66,7 @@ function extract_image_from_gallery(gallery) {
 }
 
 async function setTheme(val, old) {
-  if (!old) return;
+  if (!old || val === old) return;
   const links = Array.from(document.getElementsByTagName('link')).filter((l) => l.href.includes(old));
   for (const link of links) {
     const href = link.href.replace(old, val);
@@ -80,8 +80,9 @@ async function setTheme(val, old) {
   }
 }
 
-function setFontSize(val) {
+function setFontSize(val, old) {
   const size = val || opts.font_size;
+  if (size === old) return;
   document.documentElement.style.setProperty('--font-size', `${size}px`);
   gradioApp().style.setProperty('--font-size', `${size}px`);
   gradioApp().style.setProperty('--text-xxs', `${size - 3}px`);
@@ -240,11 +241,11 @@ function clearPrompts(prompt, negative_prompt) {
   return [prompt, negative_prompt];
 }
 
-const promptTokecountUpdateFuncs = {};
+const promptTokenCountUpdateFuncs = {};
 
 function recalculatePromptTokens(name) {
-  if (promptTokecountUpdateFuncs[name]) {
-    promptTokecountUpdateFuncs[name]();
+  if (promptTokenCountUpdateFuncs[name]) {
+    promptTokenCountUpdateFuncs[name]();
   }
 }
 
@@ -329,8 +330,8 @@ onAfterUiUpdate(async () => {
     if (counter.parentElement === prompt.parentElement) return;
     prompt.parentElement.insertBefore(counter, prompt);
     prompt.parentElement.style.position = 'relative';
-    promptTokecountUpdateFuncs[id] = () => { update_token_counter(id_button); };
-    localTextarea.addEventListener('input', promptTokecountUpdateFuncs[id]);
+    promptTokenCountUpdateFuncs[id] = () => { update_token_counter(id_button); };
+    localTextarea.addEventListener('input', promptTokenCountUpdateFuncs[id]);
     if (!promptsInitialized) log('initPrompts');
     promptsInitialized = true;
   }
@@ -443,8 +444,9 @@ function createThemeElement() {
   return el;
 }
 
-function toggleCompact(val) {
-  // log('toggleCompact', val);
+function toggleCompact(val, old) {
+  if (val === old) return;
+  log('toggleCompact', val, old);
   if (val) {
     gradioApp().style.setProperty('--layout-gap', 'var(--spacing-md)');
     gradioApp().querySelectorAll('input[type=range]').forEach((el) => el.classList.add('hidden'));

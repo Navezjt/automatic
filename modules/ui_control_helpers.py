@@ -33,13 +33,16 @@ def initialize():
     masking.cache_dir   = os.path.join(shared.opts.control_dir, 'segment')
     unit.default_device = devices.device
     unit.default_dtype = devices.dtype
-    os.makedirs(shared.opts.control_dir, exist_ok=True)
-    os.makedirs(controlnet.cache_dir, exist_ok=True)
-    os.makedirs(xs.cache_dir, exist_ok=True)
-    os.makedirs(lite.cache_dir, exist_ok=True)
-    os.makedirs(t2iadapter.cache_dir, exist_ok=True)
-    os.makedirs(processors.cache_dir, exist_ok=True)
-    os.makedirs(masking.cache_dir, exist_ok=True)
+    try:
+        os.makedirs(shared.opts.control_dir, exist_ok=True)
+        os.makedirs(controlnet.cache_dir, exist_ok=True)
+        os.makedirs(xs.cache_dir, exist_ok=True)
+        os.makedirs(lite.cache_dir, exist_ok=True)
+        os.makedirs(t2iadapter.cache_dir, exist_ok=True)
+        os.makedirs(processors.cache_dir, exist_ok=True)
+        os.makedirs(masking.cache_dir, exist_ok=True)
+    except Exception:
+        pass
     scripts.scripts_current = scripts.scripts_control
     scripts.scripts_current.initialize_scripts(is_img2img=True)
 
@@ -64,6 +67,7 @@ def interrogate_booru():
 
 
 def display_units(num_units):
+    num_units = num_units or 1
     return (num_units * [gr.update(visible=True)]) + ((max_units - num_units) * [gr.update(visible=False)])
 
 
@@ -121,13 +125,13 @@ def select_input(input_mode, input_image, init_image, init_type, input_resize, i
     # control inputs
     if isinstance(selected_input, Image.Image): # image via upload -> image
         if input_mode == 'Outpaint':
-            input_mask = masking.run_mask(input_image=selected_input, input_mask=None, return_type='Grayscale')
+            masking.opts.invert = True
+            selected_input, input_mask = masking.outpaint(input_image=selected_input)
         input_source = [selected_input]
         input_type = 'PIL.Image'
         status = f'Control input | Image | Size {selected_input.width}x{selected_input.height} | Mode {selected_input.mode}'
         res = [gr.Tabs.update(selected='out-gallery'), status]
     elif isinstance(selected_input, dict): # inpaint -> dict image+mask
-        # input_mask = masking.run_mask(input_image=selected_input['image'], input_mask=selected_input['mask'], return_type='Grayscale')
         input_mask = selected_input['mask']
         selected_input = selected_input['image']
         input_source = [selected_input]

@@ -1,6 +1,6 @@
 import os
 
-import modules.face_restoration
+from installer import install
 from modules import paths, shared, devices, modelloader, errors
 
 model_dir = "GFPGAN"
@@ -66,11 +66,17 @@ gfpgan_constructor = None
 
 
 def setup_model(dirname):
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
     try:
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+    except Exception:
+        pass
+    try:
+        install('basicsr')
+        install('gfpgan')
         import gfpgan
         import facexlib
+        import modules.face_restoration
 
         global user_path # pylint: disable=global-statement
         global have_gfpgan # pylint: disable=global-statement
@@ -104,4 +110,4 @@ def setup_model(dirname):
 
         shared.face_restorers.append(FaceRestorerGFPGAN())
     except Exception as e:
-        errors.display(e, 'gfpgan')
+        errors.log.error(f'GFPGan failed to initialize: {e}')

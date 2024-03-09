@@ -10,7 +10,7 @@ from io import StringIO
 from PIL import Image
 import numpy as np
 import gradio as gr
-from modules import shared, errors, scripts, images, sd_samplers, processing, sd_models, sd_vae
+from modules import shared, errors, scripts, images, sd_samplers, processing, sd_models, sd_vae, ipadapter
 from modules.ui_components import ToolButton
 import modules.ui_symbols as symbols
 
@@ -233,7 +233,7 @@ axis_options = [
     AxisOption("CFG End", float, apply_field("cfg_end")),
     AxisOption("Variation seed", int, apply_field("subseed")),
     AxisOption("Variation strength", float, apply_field("subseed_strength")),
-    AxisOption("Clip skip", int, apply_clip_skip),
+    AxisOption("Clip skip", float, apply_clip_skip),
     AxisOption("Denoising strength", float, apply_field("denoising_strength")),
     AxisOption("Prompt order", str_permutations, apply_order, fmt=format_value_join_list),
     AxisOption("Model dictionary", str, apply_dict, fmt=format_value, cost=1.0, choices=lambda: ['None'] + list(sd_models.checkpoints_list)),
@@ -246,7 +246,7 @@ axis_options = [
     AxisOption("[Sampler] Sigma tmax", float, apply_field("s_tmax")),
     AxisOption("[Sampler] Sigma Churn", float, apply_field("s_churn")),
     AxisOption("[Sampler] Sigma noise", float, apply_field("s_noise")),
-    AxisOption("[Sampler] ETA", float, apply_field("eta")),
+    AxisOption("[Sampler] ETA", float, apply_setting("scheduler_eta")),
     AxisOption("[Sampler] Solver order", int, apply_setting("schedulers_solver_order")),
     AxisOption("[Second pass] Upscaler", str, apply_field("hr_upscaler"), choices=lambda: [*shared.latent_upscale_modes, *[x.name for x in shared.sd_upscalers]]),
     AxisOption("[Second pass] Sampler", str, apply_hr_sampler_name, fmt=format_value, confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers]),
@@ -273,8 +273,10 @@ axis_options = [
     AxisOption("[FreeU] 2nd stage backbone factor", float, apply_setting('freeu_b2')),
     AxisOption("[FreeU] 1st stage skip factor", float, apply_setting('freeu_s1')),
     AxisOption("[FreeU] 2nd stage skip factor", float, apply_setting('freeu_s2')),
-    AxisOption("[IP adapter] Name", str, apply_field('ip_adapter_name'), cost=1.0),
-    AxisOption("[IP adapter] Scale", float, apply_field('ip_adapter_scale')),
+    AxisOption("[IP adapter] Name", str, apply_field('ip_adapter_names'), cost=1.0, choices=lambda: list(ipadapter.ADAPTERS)),
+    AxisOption("[IP adapter] Scale", float, apply_field('ip_adapter_scales')),
+    AxisOption("[IP adapter] Starts", float, apply_field('ip_adapter_starts')),
+    AxisOption("[IP adapter] Ends", float, apply_field('ip_adapter_ends')),
 ]
 
 
@@ -296,6 +298,9 @@ def draw_xyz_grid(p, xs, ys, zs, x_labels, y_labels, z_labels, cell, draw_legend
         processed: processing.Processed = cell(x, y, z, ix, iy, iz)
         if processed_result is None:
             processed_result = copy(processed)
+            if processed_result is None:
+                shared.log.error('XYZ grid: no processing results')
+                return processing.Processed(p, [])
             processed_result.images = [None] * list_size
             processed_result.all_prompts = [None] * list_size
             processed_result.all_seeds = [None] * list_size
@@ -422,6 +427,8 @@ class Script(scripts.Script):
 
     def ui(self, is_img2img):
         self.current_axis_options = [x for x in axis_options if type(x) == AxisOption or x.is_img2img == is_img2img]
+        with gr.Row():
+            gr.HTML('<span">&nbsp X/Y/Z Grid</span><br>')
         with gr.Row():
             with gr.Column():
                 with gr.Row(variant='compact'):

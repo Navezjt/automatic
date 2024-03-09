@@ -35,6 +35,7 @@ async def txt2img():
     log.debug({ 'info': info })
     if options['batch_size'] != len(data['images']):
         log.error({ 'requested': options['batch_size'], 'received': len(data['images']) })
+        return 0
     for i in range(len(data['images'])):
         data['images'][i] = Image.open(io.BytesIO(base64.b64decode(data['images'][i].split(',',1)[0])))
         if args.save:
@@ -97,7 +98,7 @@ async def main():
             if i == 0:
                 log.info({ 'warmup': round(ts, 2) })
             else:
-                peak = gpu['session']['peak'] if 'session' in gpu else 0
+                peak = gpu['system']['used'] # gpu['session']['peak'] if 'session' in gpu else 0
                 log.info({ 'batch': batch[i], 'its': round(options.steps / (ts / batch[i]), 2), 'img': round(ts / batch[i], 2), 'wall': round(ts, 2), 'peak': gb(peak), 'oom': oom > 0 })
         else:
             await asyncio.sleep(10)
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     log.info({ 'run-benchmark' })
     parser = argparse.ArgumentParser(description = 'run-benchmark')
     parser.add_argument("--steps", type=int, default=50, required=False, help="steps")
-    parser.add_argument("--sampler", type=str, default='Euler a', required=False, help="max batch size")
+    parser.add_argument("--sampler", type=str, default='Euler a', required=False, help="Use specific sampler")
     parser.add_argument("--prompt", type=str, default='photo of two dice on a table', required=False, help="prompt")
     parser.add_argument("--negative", type=str, default='foggy, blurry', required=False, help="prompt")
     parser.add_argument("--maxbatch", type=int, default=16, required=False, help="max batch size")

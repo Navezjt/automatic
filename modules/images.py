@@ -241,7 +241,7 @@ def resize_image(resize_mode, im, width, height, upscaler_name=None, output_type
 
     def resize(im, w, h):
         if upscaler_name is None or upscaler_name == "None" or im.mode == 'L':
-            return im.resize((w, h), resample=Image.Resampling.LANCZOS)
+            return im.resize((w, h), resample=Image.Resampling.LANCZOS) # force for mask
         scale = max(w / im.width, h / im.height)
         if scale > 1.0:
             upscalers = [x for x in shared.sd_upscalers if x.name == upscaler_name]
@@ -254,7 +254,7 @@ def resize_image(resize_mode, im, width, height, upscaler_name=None, output_type
                     im = latent(im, w, h, upscaler)
                 else:
                     shared.log.warning(f"Resize upscaler: invalid={upscaler_name} fallback={upscaler.name}")
-        if im.width != w or im.height != h:
+        if im.width != w or im.height != h: # probably downsample after upscaler created larger image
             im = im.resize((w, h), resample=Image.Resampling.LANCZOS)
         return im
 
@@ -343,7 +343,7 @@ class FilenameGenerator:
         else:
             debug(f'Filename generator init: {seed} {prompt}')
         self.p = p
-        if seed is not None and seed > 0:
+        if seed is not None and int(seed) > 0:
             self.seed = seed
         elif hasattr(p, 'all_seeds'):
             self.seed = p.all_seeds[0]
@@ -810,6 +810,7 @@ def image_data(data):
     err2 = None
     try:
         image = Image.open(io.BytesIO(data))
+        image.load()
         info, _ = read_info_from_image(image)
         errors.log.debug(f'Decoded object: image={image} metadata={info}')
         return info, None

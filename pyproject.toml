@@ -4,17 +4,19 @@ exclude = [
   "/usr/lib",
 	"extensions",
   "extensions-builtin",
-  "modules/lora",
   "modules/dml",
   "modules/k-diffusion",
   "repositories/ldm",
   "repositories/taming",
   "repositories/blip",
   "repositories/codeformer",
-  "modules/control/proc/normalbae/nets/submodules/efficientnet_repo/geffnet",
+  "modules/control/proc/normalbae/",
+  "modules/control/proc/leres/",
   "modules/control/units/*_model.py",
   "modules/control/units/*_pipe.py",
   "modules/pipelines/*.py",
+  "modules/xadapter/*.py",
+  "modules/tcd/*.py",
 ]
 [tool.ruff.lint]
 select = [
@@ -52,6 +54,7 @@ ignore = [
 	"E731", # Do not assign a `lambda` expression, use a `def`
 	"I001", # Import block is un-sorted or un-formatted
 	"W605", # Invalid escape sequence, messes with some docstrings
+  "B006", # Do not use mutable data structures for argument defaults
   "B028", # No explicit stacklevel
   "B905", # Without explicit scrict
   "C408", # Rewrite as a literal

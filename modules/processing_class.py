@@ -71,6 +71,7 @@ class StableDiffusionProcessing:
         self.all_seeds = None
         self.all_subseeds = None
         self.clip_skip = clip_skip
+        shared.opts.data['clip_skip'] = int(self.clip_skip) # for compatibility with a1111 sd_hijack_clip
         self.iteration = 0
         self.is_control = False
         self.is_hr_pass = False
@@ -101,9 +102,9 @@ class StableDiffusionProcessing:
         self.s_max = shared.opts.s_max
         self.s_tmin = shared.opts.s_tmin
         self.s_tmax = float('inf')  # not representable as a standard ui option
-        shared.opts.data['clip_skip'] = clip_skip
         self.task_args = {}
         # a1111 compatibility items
+        self.batch_index = 0
         self.refiner_switch_at = 0
         self.hr_prompt = ''
         self.all_hr_prompts = []
@@ -114,6 +115,12 @@ class StableDiffusionProcessing:
         self.scripts_value: scripts.ScriptRunner = field(default=None, init=False)
         self.script_args_value: list = field(default=None, init=False)
         self.scripts_setup_complete: bool = field(default=False, init=False)
+        # ip adapter
+        self.ip_adapter_names = []
+        self.ip_adapter_scales = [0.0]
+        self.ip_adapter_images = []
+        self.ip_adapter_starts = [0.0]
+        self.ip_adapter_ends = [1.0]
         # hdr
         self.hdr_mode=hdr_mode
         self.hdr_brightness=hdr_brightness
@@ -254,14 +261,14 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
                     self.hr_upscale_to_y = self.hr_resize_y
                 self.truncate_x = (self.hr_upscale_to_x - target_w) // 8
                 self.truncate_y = (self.hr_upscale_to_y - target_h) // 8
-        # special case: the user has chosen to do nothing
-        if (self.hr_upscale_to_x == self.width and self.hr_upscale_to_y == self.height) or self.hr_upscaler is None or self.hr_upscaler == 'None':
-            self.is_hr_pass = False
-            return
-        self.is_hr_pass = True
-        hypertile_set(self, hr=True)
-        shared.state.job_count = 2 * self.n_iter
-        shared.log.debug(f'Init hires: upscaler="{self.hr_upscaler}" sampler="{self.hr_sampler_name}" resize={self.hr_resize_x}x{self.hr_resize_y} upscale={self.hr_upscale_to_x}x{self.hr_upscale_to_y}')
+        if shared.backend == shared.Backend.ORIGINAL: # diffusers are handled in processing_diffusers
+            if (self.hr_upscale_to_x == self.width and self.hr_upscale_to_y == self.height) or self.hr_upscaler is None or self.hr_upscaler == 'None': # special case: the user has chosen to do nothing
+                self.is_hr_pass = False
+                return
+            self.is_hr_pass = True
+            hypertile_set(self, hr=True)
+            shared.state.job_count = 2 * self.n_iter
+            shared.log.debug(f'Init hires: upscaler="{self.hr_upscaler}" sampler="{self.hr_sampler_name}" resize={self.hr_resize_x}x{self.hr_resize_y} upscale={self.hr_upscale_to_x}x{self.hr_upscale_to_y}')
 
     def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
         from modules import processing_original
@@ -335,19 +342,11 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
                     np_mask = cv2.GaussianBlur(np_mask, (kernel_size, 1), self.mask_blur)
                     np_mask = cv2.GaussianBlur(np_mask, (1, kernel_size), self.mask_blur)
                     self.image_mask = Image.fromarray(np_mask)
-            """
-            else: # handled in processing_diffusers
-                if hasattr(self, 'init_images'):
-                    self.image_mask = masking.run_mask(
-                        input_image=self.init_images,
-                        input_mask=self.image_mask,
-                        return_type='Grayscale',
-                        mask_blur=self.mask_blur,
-                        mask_padding=self.inpaint_full_res_padding,
-                        segment_enable=False,
-                        invert=self.inpainting_mask_invert==1,
-                    )
-            """
+            elif shared.backend == shared.Backend.DIFFUSERS:
+                if 'control' in self.ops:
+                    self.image_mask = masking.run_mask(input_image=self.init_images, input_mask=self.image_mask, return_type='Grayscale', invert=self.inpainting_mask_invert==1) # blur/padding are handled in masking module
+                else:
+                    self.image_mask = masking.run_mask(input_image=self.init_images, input_mask=self.image_mask, return_type='Grayscale', invert=self.inpainting_mask_invert==1, mask_blur=self.mask_blur, mask_padding=self.inpaint_full_res_padding) # old img2img
             if self.inpaint_full_res: # mask only inpaint
                 self.mask_for_overlay = self.image_mask
                 mask = self.image_mask.convert('L')
@@ -355,10 +354,10 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
                 crop_region = masking.expand_crop_region(crop_region, self.width, self.height, mask.width, mask.height)
                 x1, y1, x2, y2 = crop_region
                 crop_mask = mask.crop(crop_region)
-                self.image_mask = images.resize_image(2, crop_mask, self.width, self.height)
+                self.image_mask = images.resize_image(resize_mode=2, im=crop_mask, width=self.width, height=self.height)
                 self.paste_to = (x1, y1, x2-x1, y2-y1)
             else: # full image inpaint
-                self.image_mask = images.resize_image(self.resize_mode, self.image_mask, self.width, self.height)
+                self.image_mask = images.resize_image(resize_mode=self.resize_mode, im=self.image_mask, width=self.width, height=self.height)
                 np_mask = np.array(self.image_mask)
                 np_mask = np.clip((np_mask.astype(np.float32)) * 2, 0, 255).astype(np.uint8)
                 self.mask_for_overlay = Image.fromarray(np_mask)
@@ -376,7 +375,7 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
             self.init_images = [self.init_images]
         for img in self.init_images:
             if img is None:
-                shared.log.warning(f"Skipping empty image: images={self.init_images}")
+                # shared.log.warning(f"Skipping empty image: images={self.init_images}")
                 continue
             self.init_img_hash = hashlib.sha256(img.tobytes()).hexdigest()[0:8] # pylint: disable=attribute-defined-outside-init
             self.init_img_width = img.width # pylint: disable=attribute-defined-outside-init
@@ -384,7 +383,7 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
             if shared.opts.save_init_img:
                 images.save_image(img, path=shared.opts.outdir_init_images, basename=None, forced_filename=self.init_img_hash, suffix="-init-image")
             image = images.flatten(img, shared.opts.img2img_background_color)
-            if self.width is None or self.height is None or self.resize_mode == 0:
+            if self.width is None or self.height is None:
                 self.width, self.height = image.width, image.height
             if crop_region is None and self.resize_mode != 4 and self.resize_mode > 0:
                 if image.width != self.width or image.height != self.height:
@@ -472,10 +471,8 @@ class StableDiffusionProcessingControl(StableDiffusionProcessingImg2Img):
         self.adapter_conditioning_factor = 1.0
         self.attention = 'Attention'
         self.fidelity = 0.5
+        self.mask_image = None
         self.override = None
-        self.ip_adapter_name = None
-        self.ip_adapter_scale = 1.0
-        self.ip_adapter_image = None
 
     def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts): # abstract
         pass

@@ -1,5 +1,6 @@
 import os
 from modules.shared import log, opts
+from modules import devices
 
 
 insightface_app = None
@@ -7,6 +8,7 @@ instightface_mp = None
 
 
 def get_app(mp_name):
+    global insightface_app, instightface_mp # pylint: disable=global-statement
     from installer import installed, install
     packages = [
         ('insightface', 'insightface'),
@@ -14,14 +16,12 @@ def get_app(mp_name):
     ]
     for pkg in packages:
         if not installed(pkg[1], reload=False, quiet=True):
-            install(pkg[0], pkg[1], ignore=True)
-    global insightface_app, instightface_mp # pylint: disable=global-statement
+            install(pkg[0], pkg[1], ignore=False)
     if insightface_app is None or mp_name != instightface_mp:
-        import onnxruntime
         from insightface.app import FaceAnalysis
         import huggingface_hub as hf
         import zipfile
-        log.debug(f"InsightFace: mp={mp_name} device={onnxruntime.get_device()} providers={onnxruntime.get_available_providers()}")
+        log.debug(f"InsightFace: mp={mp_name} provider={devices.onnx}")
         root_dir = os.path.join(opts.diffusers_dir, 'models--vladmandic--insightface-faceanalysis')
         local_dir = os.path.join(root_dir, 'models')
         extract_dir = os.path.join(local_dir, mp_name)
@@ -44,8 +44,7 @@ def get_app(mp_name):
             'download': False,
             'download_zip': False,
         }
-        insightface_app = FaceAnalysis(name=mp_name, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], **kwargs)
+        insightface_app = FaceAnalysis(name=mp_name, providers=devices.onnx, **kwargs)
         instightface_mp = mp_name
-        onnxruntime.set_default_logger_severity(3)
         insightface_app.prepare(ctx_id=0, det_thresh=0.5, det_size=(640, 640))
     return insightface_app

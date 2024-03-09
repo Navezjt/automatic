@@ -20,14 +20,6 @@ import functools
 
 from modules import shared, devices, sd_models
 
-def get_node_by_name(self, name: str) ->  nncf.common.graph.NNCFNode:
-    node_ids = self._node_name_to_node_id_map.get(name, None)
-    if node_ids is None:
-        raise RuntimeError("Could not find a node {} in NNCFGraph!".format(name))
-
-    node_key = f"{node_ids[0]} {name}"
-    return self._nodes[node_key]
-nncf.common.graph.NNCFGraph.get_node_by_name = get_node_by_name
 
 def BUILD_MAP_UNPACK(self, inst):
         items = self.popn(inst.argval)
@@ -91,6 +83,8 @@ def get_device():
         device = "CPU"
     elif shared.cmd_opts.device_id is not None:
         device = f"GPU.{shared.cmd_opts.device_id}"
+        if device not in core.available_devices:
+            device = "GPU.0" if "GPU.0" in core.available_devices else "GPU" if "GPU" in core.available_devices else "CPU"
     elif "GPU" in core.available_devices:
         device = "GPU"
     elif "GPU.1" in core.available_devices:
@@ -240,9 +234,9 @@ def openvino_compile(gm: GraphModule, *example_inputs, model_hash_str: str = Non
             new_inputs.append(example_inputs[idx].detach().cpu().numpy())
         new_inputs = [new_inputs]
         if shared.opts.nncf_quant_mode == "INT8":
-            nncf.quantize(om, nncf.Dataset(new_inputs))
+            om = nncf.quantize(om, nncf.Dataset(new_inputs))
         else:
-            nncf.quantize(om, nncf.Dataset(new_inputs), mode=getattr(nncf.QuantizationMode, shared.opts.nncf_quant_mode),
+            om = nncf.quantize(om, nncf.Dataset(new_inputs), mode=getattr(nncf.QuantizationMode, shared.opts.nncf_quant_mode),
                 advanced_parameters=nncf.quantization.advanced_parameters.AdvancedQuantizationParameters(
                 overflow_fix=nncf.quantization.advanced_parameters.OverflowFix.DISABLE, backend_params=None))
 
@@ -292,9 +286,9 @@ def openvino_compile_cached_model(cached_model_path, *example_inputs):
             new_inputs.append(example_inputs[idx].detach().cpu().numpy())
         new_inputs = [new_inputs]
         if shared.opts.nncf_quant_mode == "INT8":
-            nncf.quantize(om, nncf.Dataset(new_inputs))
+            om = nncf.quantize(om, nncf.Dataset(new_inputs))
         else:
-            nncf.quantize(om, nncf.Dataset(new_inputs), mode=getattr(nncf.QuantizationMode, shared.opts.nncf_quant_mode),
+            om = nncf.quantize(om, nncf.Dataset(new_inputs), mode=getattr(nncf.QuantizationMode, shared.opts.nncf_quant_mode),
                 advanced_parameters=nncf.quantization.advanced_parameters.AdvancedQuantizationParameters(
                 overflow_fix=nncf.quantization.advanced_parameters.OverflowFix.DISABLE, backend_params=None))
 
@@ -456,7 +450,7 @@ def openvino_fx(subgraph, example_inputs):
                                 example_inputs_reordered.append(example_inputs[idx1])
                 example_inputs = example_inputs_reordered
 
-            if dont_use_faketensors:
+            if dont_use_faketensors or shared.opts.openvino_disable_memory_cleanup:
                 pass
             else:
                 # Delete unused subgraphs

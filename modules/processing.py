@@ -316,6 +316,9 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
             def infotext(index): # pylint: disable=function-redefined # noqa: F811
                 return create_infotext(p, p.prompts, p.seeds, p.subseeds, index=index, all_negative_prompts=p.negative_prompts)
 
+            if hasattr(shared.sd_model, 'restore_pipeline') and shared.sd_model.restore_pipeline is not None:
+                shared.sd_model.restore_pipeline()
+
             for i, x_sample in enumerate(x_samples_ddim):
                 p.batch_index = i
                 if type(x_sample) == Image.Image:
@@ -392,6 +395,10 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
     if not p.disable_extra_networks:
         extra_networks.deactivate(p, extra_network_data)
+
+    if shared.opts.include_mask:
+        if getattr(p, 'image_mask', None) is not None and isinstance(p.image_mask, Image.Image):
+            output_images.append(p.image_mask)
 
     processed = Processed(
         p,

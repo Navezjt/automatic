@@ -251,10 +251,7 @@ class ExtraNetworksPage:
             htmls.append(self.create_html(item, tabname))
         self.html += ''.join(htmls)
         self.page_time = time.time()
-        if len(subdirs_html) > 0 or len(self.html) > 0:
-            self.html = f"<div id='{tabname}_{self_name_id}_subdirs' class='extra-network-subdirs'>{subdirs_html}</div><div id='{tabname}_{self_name_id}_cards' class='extra-network-cards'>{self.html}</div>"
-        else:
-            return ''
+        self.html = f"<div id='{tabname}_{self_name_id}_subdirs' class='extra-network-subdirs'>{subdirs_html}</div><div id='{tabname}_{self_name_id}_cards' class='extra-network-cards'>{self.html}</div>"
         shared.log.debug(f"Extra networks: page='{self.name}' items={len(self.items)} subfolders={len(subdirs)} tab={tabname} folders={self.allowed_directories_for_previews()} list={self.list_time:.2f} thumb={self.preview_time:.2f} desc={self.desc_time:.2f} info={self.info_time:.2f} workers={shared.max_workers}")
         if len(self.missing_thumbs) > 0:
             threading.Thread(target=self.create_thumb).start()
@@ -819,12 +816,6 @@ def create_ui(container, button_parent, tabname, skip_indexing = False):
             "prompt": prompt,
             "negative": params.get('Negative prompt', ''),
             "extra": '',
-            # "type": 'Style',
-            # "title": name,
-            # "filename": fn,
-            # "search_term": None,
-            # "preview": None,
-            # "local_preview": None,
         }
         shared.writefile(item, fn, silent=True)
         if len(prompt) > 0:
