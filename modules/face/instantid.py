@@ -21,8 +21,8 @@ def instant_id(p: processing.StableDiffusionProcessing, app, source_images, stre
         shared.log.warning('InstantID: no input images')
         return None
 
-    c = shared.sd_model.__class__.__name__ if shared.sd_model is not None else ''
-    if c != 'StableDiffusionXLPipeline':
+    c = shared.sd_model.__class__.__name__ if shared.sd_loaded else ''
+    if c != 'StableDiffusionXLPipeline' and c != 'StableDiffusionXLInstantIDPipeline':
         shared.log.warning(f'InstantID invalid base model: current={c} required=StableDiffusionXLPipeline')
         return None
 
@@ -42,8 +42,6 @@ def instant_id(p: processing.StableDiffusionProcessing, app, source_images, stre
     if controlnet_model is None or not cache:
         controlnet_model = ControlNetModel.from_pretrained(REPO_ID, subfolder="ControlNetModel", torch_dtype=devices.dtype, cache_dir=shared.opts.diffusers_dir)
         sd_models.move_model(controlnet_model, devices.device)
-
-    processing.process_init(p)
 
     # create new pipeline
     orig_pipeline = shared.sd_model # backup current pipeline definition
@@ -66,6 +64,9 @@ def instant_id(p: processing.StableDiffusionProcessing, app, source_images, stre
     shared.sd_model.to(dtype=devices.dtype)
 
     # pipeline specific args
+    if p.all_prompts is None or len(p.all_prompts) == 0:
+        processing.process_init(p)
+        p.init(p.all_prompts, p.all_seeds, p.all_subseeds)
     orig_prompt_attention = shared.opts.prompt_attention
     shared.opts.data['prompt_attention'] = 'Fixed attention' # otherwise need to deal with class_tokens_mask
     p.task_args['image_embeds'] = face_embeds[0].shape # placeholder
@@ -73,8 +74,8 @@ def instant_id(p: processing.StableDiffusionProcessing, app, source_images, stre
     p.task_args['controlnet_conditioning_scale'] = float(conditioning)
     p.task_args['ip_adapter_scale'] = float(strength)
     shared.log.debug(f"InstantID args: {p.task_args}")
-    p.task_args['prompt'] = p.all_prompts[0] # override all logic
-    p.task_args['negative_prompt'] = p.all_negative_prompts[0]
+    p.task_args['prompt'] = p.all_prompts[0] if p.all_prompts is not None else p.prompt
+    p.task_args['negative_prompt'] = p.all_negative_prompts[0] if p.all_negative_prompts is not None else p.negative_prompt
     p.task_args['image_embeds'] = face_embeds[0] # overwrite placeholder
 
     # run processing

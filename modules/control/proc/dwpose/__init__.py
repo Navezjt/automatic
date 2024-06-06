@@ -9,6 +9,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import cv2
 import numpy as np
 from PIL import Image
+from installer import installed, pip, log
 from modules.control.util import HWC3, resize_image
 from .draw import draw_bodypose, draw_handpose, draw_facepose
 checked_ok = False
@@ -16,18 +17,35 @@ checked_ok = False
 
 def check_dependencies():
     global checked_ok # pylint: disable=global-statement
-    from installer import installed, install, log
-    packages = [('openmim', 'openmim'), ('mmengine', 'mmengine'), ('mmcv', 'mmcv'), ('mmpose', 'mmpose'), ('mmdet', 'mmdet')]
-    for pkg in packages:
-        if not installed(pkg[1], reload=True, quiet=True):
-            install(pkg[0], pkg[1], ignore=False)
+    debug = log.trace if os.environ.get('SD_DWPOSE_DEBUG', None) is not None else lambda *args, **kwargs: None
+    packages = [
+        'openmim==0.3.9',
+        'mmengine==0.10.4',
+        'mmcv==2.1.0',
+        'mmpose==1.3.1',
+        'mmdet==3.3.0',
+    ]
+    status = [installed(p, reload=False, quiet=False) for p in packages]
+    debug(f'DWPose required={packages} status={status}')
+    if not all(status):
+        log.info(f'Installing DWPose dependencies: {[packages]}')
+        cmd = 'install --upgrade --no-deps --force-reinstall '
+        pkgs = ' '.join(packages)
+        res = pip(cmd + pkgs, ignore=False, quiet=False)
+        debug(f'DWPose pip install: {res}')
     try:
+        import pkg_resources
+        import imp # pylint: disable=deprecated-module
+        imp.reload(pkg_resources)
         import mmcv # pylint: disable=unused-import
+        import mmengine # pylint: disable=unused-import
+        import mmpose # pylint: disable=unused-import
+        import mmdet # pylint: disable=unused-import
+        debug('DWPose import ok')
         checked_ok = True
-        return True
     except Exception as e:
         log.error(f'DWPose: {e}')
-        return False
+    return checked_ok
 
 
 def draw_pose(pose, H, W):
@@ -41,11 +59,12 @@ def draw_pose(pose, H, W):
     canvas = draw_bodypose(canvas, candidate, subset)
     canvas = draw_handpose(canvas, hands)
     canvas = draw_facepose(canvas, faces)
-
     return canvas
+
 
 class DWposeDetector:
     def __init__(self, det_config=None, det_ckpt=None, pose_config=None, pose_ckpt=None, device="cpu"):
+        self.pose_estimation = None
         if not checked_ok:
             if not check_dependencies():
                 return
@@ -57,6 +76,8 @@ class DWposeDetector:
         return self
 
     def __call__(self, input_image, detect_resolution=512, image_resolution=512, output_type="pil", min_confidence=0.3, **kwargs):
+        if self.pose_estimation is None:
+            log.error("DWPose: not loaded")
         input_image = cv2.cvtColor(np.array(input_image, dtype=np.uint8), cv2.COLOR_RGB2BGR)
 
         input_image = HWC3(input_image)

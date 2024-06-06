@@ -64,8 +64,6 @@ def create_infotext(p: StableDiffusionProcessing, all_prompts=None, all_seeds=No
         "Operations": '; '.join(ops).replace('"', '') if len(p.ops) > 0 else 'none',
     }
     if 'txt2img' in p.ops:
-        pass
-    if shared.backend == shared.Backend.ORIGINAL:
         args["Variation seed"] = all_subseeds[index] if p.subseed_strength > 0 else None
         args["Variation strength"] = p.subseed_strength if p.subseed_strength > 0 else None
     if 'hires' in p.ops or 'upscale' in p.ops:
@@ -131,10 +129,8 @@ def create_infotext(p: StableDiffusionProcessing, all_prompts=None, all_seeds=No
         args['Sampler sigma noise'] = shared.opts.s_noise if shared.opts.s_noise != shared.opts.data_labels.get('s_noise').default else None
         args['Sampler sigma tmin'] = shared.opts.s_tmin if shared.opts.s_tmin != shared.opts.data_labels.get('s_tmin').default else None
     # tome
-    token_merging_ratio = p.get_token_merging_ratio()
-    token_merging_ratio_hr = p.get_token_merging_ratio(for_hr=True) if p.enable_hr else None
-    args['ToMe'] = token_merging_ratio if token_merging_ratio != 0 else None
-    args['ToMe hires'] = token_merging_ratio_hr if token_merging_ratio_hr != 0 else None
+    args['ToMe'] = shared.opts.tome_ratio if shared.opts.tome_ratio != 0 else None
+    args['ToDo'] = shared.opts.todo_ratio if shared.opts.todo_ratio != 0 else None
 
     args.update(p.extra_generation_params)
     params_text = ", ".join([k if k == v else f'{k}: {generation_parameters_copypaste.quote(v)}' for k, v in args.items() if v is not None])
