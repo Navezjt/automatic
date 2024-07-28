@@ -64,31 +64,31 @@ For screenshots and informations on other available themes, see [Themes Wiki](ht
 
 Additional models will be added as they become available and there is public interest in them
 
-- [RunwayML Stable Diffusion](https://github.com/Stability-AI/stablediffusion/) 1.x and 2.x *(all variants)*  
-- [StabilityAI Stable Diffusion XL](https://github.com/Stability-AI/generative-models)  
-- [StabilityAI Stable Diffusion 3 Medium](https://stability.ai/news/stable-diffusion-3-medium)  
+- [RunwayML Stable Diffusion](https://github.com/Stability-AI/stablediffusion/) 1.x and 2.x *(all variants)*
+- [StabilityAI Stable Diffusion XL](https://github.com/Stability-AI/generative-models)
+- [StabilityAI Stable Diffusion 3 Medium](https://stability.ai/news/stable-diffusion-3-medium)
 - [StabilityAI Stable Video Diffusion](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid) Base, XT 1.0, XT 1.1
-- [LCM: Latent Consistency Models](https://github.com/openai/consistency_models)  
-- [Playground](https://huggingface.co/playgroundai/playground-v2-256px-base) *v1, v2 256, v2 512, v2 1024 and latest v2.5*  
+- [LCM: Latent Consistency Models](https://github.com/openai/consistency_models)
+- [Playground](https://huggingface.co/playgroundai/playground-v2-256px-base) *v1, v2 256, v2 512, v2 1024 and latest v2.5*
 - [Stable Cascade](https://github.com/Stability-AI/StableCascade) *Full* and *Lite*
 - [aMUSEd 256](https://huggingface.co/amused/amused-256) 256 and 512
-- [Segmind Vega](https://huggingface.co/segmind/Segmind-Vega)  
-- [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B)  
-- [Segmind SegMoE](https://github.com/segmind/segmoe) *SD and SD-XL*  
-- [Kandinsky](https://github.com/ai-forever/Kandinsky-2) *2.1 and 2.2 and latest 3.0*  
-- [PixArt-α XL 2](https://github.com/PixArt-alpha/PixArt-alpha) *Medium and Large*  
-- [PixArt-Σ](https://github.com/PixArt-alpha/PixArt-sigma)  
-- [Warp Wuerstchen](https://huggingface.co/blog/wuertschen)  
+- [Segmind Vega](https://huggingface.co/segmind/Segmind-Vega)
+- [Segmind SSD-1B](https://huggingface.co/segmind/SSD-1B)
+- [Segmind SegMoE](https://github.com/segmind/segmoe) *SD and SD-XL*
+- [Kandinsky](https://github.com/ai-forever/Kandinsky-2) *2.1 and 2.2 and latest 3.0*
+- [PixArt-α XL 2](https://github.com/PixArt-alpha/PixArt-alpha) *Medium and Large*
+- [PixArt-Σ](https://github.com/PixArt-alpha/PixArt-sigma)
+- [Warp Wuerstchen](https://huggingface.co/blog/wuertschen)
 - [Tenecent HunyuanDiT](https://github.com/Tencent/HunyuanDiT)
 - [Tsinghua UniDiffusion](https://github.com/thu-ml/unidiffuser)
 - [DeepFloyd IF](https://github.com/deep-floyd/IF) *Medium and Large*
 - [ModelScope T2V](https://huggingface.co/damo-vilab/text-to-video-ms-1.7b)
 - [Segmind SD Distilled](https://huggingface.co/blog/sd_distillation) *(all variants)*
-- [BLIP-Diffusion](https://dxli94.github.io/BLIP-Diffusion-website/)  
+- [BLIP-Diffusion](https://dxli94.github.io/BLIP-Diffusion-website/)
 - [KOALA 700M](https://github.com/youngwanLEE/sdxl-koala)
-- [VGen](https://huggingface.co/ali-vilab/i2vgen-xl)  
+- [VGen](https://huggingface.co/ali-vilab/i2vgen-xl)
 - [SDXS](https://github.com/IDKiro/sdxs)
-- [Hyper-SD](https://huggingface.co/ByteDance/Hyper-SD) 
+- [Hyper-SD](https://huggingface.co/ByteDance/Hyper-SD)
 
 
 Also supported are modifiers such as:
@@ -226,6 +226,7 @@ List of available parameters, run `webui --help` for the full & up-to-date list:
       --version                                          Print version information
       --ignore                                           Ignore any errors and attempt to continue
       --safe                                             Run in safe mode with no user extensions
+      --uv                                               Use uv as installer, default: False
 
     Logging options:
       --log LOG                                          Set log file, default: None
@@ -297,7 +298,7 @@ check [ChangeLog](CHANGELOG.md) for when feature was first introduced as it will
 ### Sponsors
 
 <div align="center">
-<!-- sponsors --><a href="https://github.com/allangrant"><img src="https://github.com/allangrant.png" width="60px" alt="Allan Grant" /></a><a href="https://github.com/BrentOzar"><img src="https://github.com/BrentOzar.png" width="60px" alt="Brent Ozar" /></a><a href="https://github.com/inktomi"><img src="https://github.com/inktomi.png" width="60px" alt="Matthew Runo" /></a><a href="https://github.com/4joeknight4"><img src="https://github.com/4joeknight4.png" width="60px" alt="" /></a><a href="https://github.com/mantzaris"><img src="https://github.com/mantzaris.png" width="60px" alt="a.v.mantzaris" /></a><a href="https://github.com/CurseWave"><img src="https://github.com/CurseWave.png" width="60px" alt="" /></a><!-- sponsors -->
+<!-- sponsors --><a href="https://github.com/allangrant"><img src="https://github.com/allangrant.png" width="60px" alt="Allan Grant" /></a><a href="https://github.com/BrentOzar"><img src="https://github.com/BrentOzar.png" width="60px" alt="Brent Ozar" /></a><a href="https://github.com/inktomi"><img src="https://github.com/inktomi.png" width="60px" alt="Matthew Runo" /></a><a href="https://github.com/mantzaris"><img src="https://github.com/mantzaris.png" width="60px" alt="a.v.mantzaris" /></a><a href="https://github.com/CurseWave"><img src="https://github.com/CurseWave.png" width="60px" alt="" /></a><!-- sponsors -->
 </div>
 
 <br>
