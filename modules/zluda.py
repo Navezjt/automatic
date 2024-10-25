@@ -12,14 +12,6 @@ PLATFORM = sys.platform
 do_nothing = lambda _: None # pylint: disable=unnecessary-lambda-assignment
 
 
-def is_zluda(device: DeviceLikeType):
-    try:
-        device = torch.device(device)
-        return torch.cuda.get_device_name(device).endswith("[ZLUDA]")
-    except Exception:
-        return False
-
-
 def test(device: DeviceLikeType) -> Union[Exception, None]:
     device = torch.device(device)
     try:
@@ -33,8 +25,9 @@ def test(device: DeviceLikeType) -> Union[Exception, None]:
 
 
 def initialize_zluda():
+    shared.cmd_opts.device_id = None
     device = devices.get_optimal_device()
-    if not devices.cuda_ok or not is_zluda(device):
+    if not devices.cuda_ok or not devices.has_zluda():
         return
 
     do_hijack()
@@ -50,15 +43,12 @@ def initialize_zluda():
         if hasattr(torch.backends.cuda, "enable_cudnn_sdp"):
             torch.backends.cuda.enable_cudnn_sdp(False)
             torch.backends.cuda.enable_cudnn_sdp = do_nothing
-        shared.opts.sdp_options = ['Math attention']
 
         # ONNX Runtime is not supported
         ort.capi._pybind_state.get_available_providers = lambda: [v for v in available_execution_providers if v != ExecutionProvider.CUDA] # pylint: disable=protected-access
         ort.get_available_providers = ort.capi._pybind_state.get_available_providers # pylint: disable=protected-access
         if shared.opts.onnx_execution_provider == ExecutionProvider.CUDA:
             shared.opts.onnx_execution_provider = ExecutionProvider.CPU
-
-        devices.device_codeformer = devices.cpu
 
         result = test(device)
         if result is not None:
@@ -67,4 +57,4 @@ def initialize_zluda():
             torch.cuda.is_available = lambda: False
             devices.cuda_ok = False
             devices.backend = 'cpu'
-            devices.device = devices.device_esrgan = devices.device_gfpgan = devices.device_interrogate = devices.cpu
+            devices.device = devices.cpu

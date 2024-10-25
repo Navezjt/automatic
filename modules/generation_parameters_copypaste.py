@@ -145,7 +145,7 @@ def connect_paste_params_buttons():
         if binding.source_text_component is not None and fields is not None:
             connect_paste(binding.paste_button, fields, binding.source_text_component, override_settings_component, binding.tabname)
         if binding.source_tabname is not None and fields is not None and binding.source_tabname in paste_fields:
-            paste_field_names = ['Prompt', 'Negative prompt', 'Steps', 'Face restoration'] + (["Seed"] if shared.opts.send_seed else []) + binding.paste_field_names
+            paste_field_names = ['Prompt', 'Negative prompt', 'Steps'] + (["Seed"] if shared.opts.send_seed else []) + binding.paste_field_names
             if "fields" in paste_fields[binding.source_tabname] and paste_fields[binding.source_tabname]["fields"] is not None:
                 binding.paste_button.click(
                     fn=lambda *x: x,
@@ -238,9 +238,10 @@ def connect_paste(button, local_paste_fields, input_comp, override_settings_comp
                 v = params.get(param_name, None)
                 if v is None:
                     continue
-                if shared.opts.disable_weights_auto_swap:
-                    if setting_name == "sd_model_checkpoint" or setting_name == 'sd_model_refiner' or setting_name == 'sd_backend' or setting_name == 'sd_vae':
-                        continue
+                if setting_name == 'sd_backend':
+                    continue
+                if shared.opts.disable_weights_auto_swap and setting_name in ['sd_model_checkpoint', 'sd_model_refiner', 'sd_model_dict', 'sd_vae', 'sd_unet', 'sd_text_encoder']:
+                    continue
                 v = shared.opts.cast_value(setting_name, v)
                 current_value = getattr(shared.opts, setting_name, None)
                 if v == current_value:

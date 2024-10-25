@@ -83,7 +83,7 @@ def crop_images(images, crops):
     try:
         for i in range(len(images)):
             if crops[i]:
-                from scripts.face_details import yolo # pylint: disable=no-name-in-module
+                from shared import yolo # pylint: disable=no-name-in-module
                 yolo.load()
                 cropped = []
                 for image in images[i]:
@@ -128,6 +128,9 @@ def apply(pipe, p: processing.StableDiffusionProcessing, adapter_names=[], adapt
         unapply(pipe)
         if hasattr(p, 'ip_adapter_images'):
             del p.ip_adapter_images
+        return False
+    if shared.sd_model_type != 'sd' and shared.sd_model_type != 'sdxl':
+        shared.log.error(f'IP adapter: model={shared.sd_model_type} class={pipe.__class__.__name__} not supported')
         return False
     if hasattr(p, 'ip_adapter_scales'):
         adapter_scales = p.ip_adapter_scales
@@ -183,9 +186,6 @@ def apply(pipe, p: processing.StableDiffusionProcessing, adapter_names=[], adapt
     if not hasattr(pipe, 'load_ip_adapter'):
         shared.log.error(f'IP adapter: pipeline not supported: {pipe.__class__.__name__}')
         return False
-    if shared.sd_model_type != 'sd' and shared.sd_model_type != 'sdxl':
-        shared.log.error(f'IP adapter: unsupported model type: {shared.sd_model_type}')
-        return False
 
     for adapter_name in adapter_names:
         # which clip to use
@@ -240,5 +240,5 @@ def apply(pipe, p: processing.StableDiffusionProcessing, adapter_names=[], adapt
         t1 = time.time()
         shared.log.info(f'IP adapter: {ip_str} image={adapter_images} mask={adapter_masks is not None} time={t1-t0:.2f}')
     except Exception as e:
-        shared.log.error(f'IP adapter failed to load: repo={base_repo} folder={ip_subfolder} weights={adapters} names={adapter_names} {e}')
+        shared.log.error(f'IP adapter failed to load: repo="{base_repo}" folder="{ip_subfolder}" weights={adapters} names={adapter_names} {e}')
     return True
