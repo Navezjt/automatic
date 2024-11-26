@@ -43,6 +43,15 @@ tunableop_results*.csv
 !webui.bat
 !webui.sh
 !package.json
+!requirements.txt
+
+# pyinstaller
+*.spec
+build/
+dist/
+
+# dynamically generated
+/repositories/ip-instruct/
 
 # all dynamic stuff
 /extensions/**/*
@@ -59,7 +68,6 @@ tunableop_results*.csv
 .vscode/
 .idea/
 /localizations
-
 .*/
 
 # force included

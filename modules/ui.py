@@ -354,15 +354,6 @@ def create_ui(startup_timer = None):
                 from modules.onnx_impl import ui as ui_onnx
                 ui_onnx.create_ui()
 
-            with gr.TabItem("Change log", id="change_log", elem_id="system_tab_changelog"):
-                with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
-                    md = f.read()
-                gr.Markdown(md)
-
-            with gr.TabItem("Licenses", id="system_licenses", elem_id="system_tab_licenses"):
-                gr.HTML(shared.html("licenses.html"), elem_id="licenses", elem_classes="licenses")
-                create_dirty_indicator("tab_licenses", [], interactive=False)
-
         def unload_sd_weights():
             modules.sd_models.unload_model_weights(op='model')
             modules.sd_models.unload_model_weights(op='refiner')
@@ -383,6 +374,16 @@ def create_ui(startup_timer = None):
 
     timer.startup.record("ui-settings")
 
+    with gr.Blocks(analytics_enabled=False) as info_interface:
+        with gr.Tabs(elem_id="tabs_info"):
+            with gr.TabItem("Change log", id="change_log", elem_id="system_tab_changelog"):
+                from modules import ui_docs
+                ui_docs.create_ui_logs()
+
+            with gr.TabItem("Wiki", id="wiki", elem_id="system_tab_wiki"):
+                from modules import ui_docs
+                ui_docs.create_ui_wiki()
+
     interfaces = []
     interfaces += [(txt2img_interface, "Text", "txt2img")]
     interfaces += [(img2img_interface, "Image", "img2img")]
@@ -392,6 +393,7 @@ def create_ui(startup_timer = None):
     interfaces += [(models_interface, "Models", "models")]
     interfaces += script_callbacks.ui_tabs_callback()
     interfaces += [(settings_interface, "System", "system")]
+    interfaces += [(info_interface, "Info", "info")]
 
     from modules import ui_extensions
     extensions_interface = ui_extensions.create_ui()

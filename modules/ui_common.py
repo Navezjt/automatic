@@ -246,7 +246,7 @@ def create_output_panel(tabname, preview=True, prompt=None, height=None):
             # columns are for <576px, <768px, <992px, <1200px, <1400px, >1400px
             result_gallery = gr.Gallery(value=[],
                                         label='Output', show_label=False, show_download_button=True, allow_preview=True, container=False, preview=preview,
-                                        columns=5, object_fit='scale-down', height=height,
+                                        columns=4, object_fit='scale-down', height=height,
                                         elem_id=f"{tabname}_gallery",
                                         )
             if prompt is not None:
@@ -319,13 +319,18 @@ def create_output_panel(tabname, preview=True, prompt=None, height=None):
             return result_gallery, generation_info, html_info, html_info_formatted, html_log
 
 
-def create_refresh_button(refresh_component, refresh_method, refreshed_args, elem_id, visible: bool = True):
+def create_refresh_button(refresh_component, refresh_method, refreshed_args = None, elem_id = None, visible: bool = True):
     def refresh():
         refresh_method()
-        args = refreshed_args() if callable(refreshed_args) else refreshed_args
+        if refreshed_args is None:
+            args = {"choices": refresh_method()} # pylint: disable=unnecessary-lambda-assignment
+        elif callable(refreshed_args):
+            args = refreshed_args()
+        else:
+            args = refreshed_args
         for k, v in args.items():
             setattr(refresh_component, k, v)
-        return gr.update(**(args or {}))
+        return gr.update(**args)
 
     refresh_button = ui_components.ToolButton(value=ui_symbols.refresh, elem_id=elem_id, visible=visible)
     refresh_button.click(fn=refresh, inputs=[], outputs=[refresh_component])

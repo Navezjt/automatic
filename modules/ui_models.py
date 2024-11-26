@@ -59,8 +59,8 @@ def create_ui():
 
             with gr.Tab(label="Convert"):
                 with gr.Row():
-                    model_name = gr.Dropdown(sd_models.checkpoint_tiles(), label="Original model")
-                    create_refresh_button(model_name, sd_models.list_models, lambda: {"choices": sd_models.checkpoint_tiles()}, "refresh_checkpoint_Z")
+                    model_name = gr.Dropdown(sd_models.checkpoint_titles(), label="Original model")
+                    create_refresh_button(model_name, sd_models.list_models, lambda: {"choices": sd_models.checkpoint_titles()}, "refresh_checkpoint_Z")
                 with gr.Row():
                     custom_name = gr.Textbox(label="Output model name")
                 with gr.Row():
@@ -98,7 +98,7 @@ def create_ui():
 
             with gr.Tab(label="Merge"):
                 def sd_model_choices():
-                    return ['None'] + sd_models.checkpoint_tiles()
+                    return ['None'] + sd_models.checkpoint_titles()
 
                 with gr.Row(equal_height=False):
                     with gr.Column(variant='compact'):
@@ -213,10 +213,10 @@ def create_ui():
                     del kwargs['dummy_component']
                     if kwargs.get("custom_name", None) is None:
                         log.error('Merge: no output model specified')
-                        return [*[gr.Dropdown.update(choices=sd_models.checkpoint_tiles()) for _ in range(4)], "No output model specified"]
+                        return [*[gr.Dropdown.update(choices=sd_models.checkpoint_titles()) for _ in range(4)], "No output model specified"]
                     elif kwargs.get("primary_model_name", None) is None or kwargs.get("secondary_model_name", None) is None:
                         log.error('Merge: no models selected')
-                        return [*[gr.Dropdown.update(choices=sd_models.checkpoint_tiles()) for _ in range(4)], "No models selected"]
+                        return [*[gr.Dropdown.update(choices=sd_models.checkpoint_titles()) for _ in range(4)], "No models selected"]
                     else:
                         log.debug(f'Merge start: {kwargs}')
                         try:
@@ -224,7 +224,7 @@ def create_ui():
                         except Exception as e:
                             modules.errors.display(e, 'Merge')
                             sd_models.list_models()  # to remove the potentially missing models from the list
-                            return [*[gr.Dropdown.update(choices=sd_models.checkpoint_tiles()) for _ in range(4)], f"Error merging checkpoints: {e}"]
+                            return [*[gr.Dropdown.update(choices=sd_models.checkpoint_titles()) for _ in range(4)], f"Error merging checkpoints: {e}"]
                         return results
 
                 def tertiary(mode):
@@ -453,7 +453,7 @@ def create_ui():
                     if tag is not None and len(tag) > 0:
                         url += f'&tag={tag}'
                     r = req(url)
-                    log.debug(f'CivitAI search: name="{name}" tag={tag or "none"} url="{url}" status={r.status_code}')
+                    log.debug(f'CivitAI search: type={model_type} name="{name}" tag={tag or "none"} url="{url}" status={r.status_code}')
                     if r.status_code != 200:
                         log.warning(f'CivitAI search: name="{name}" tag={tag} status={r.status_code}')
                         return [], gr.update(visible=False, value=[]), gr.update(visible=False, value=None), gr.update(visible=False, value=None)

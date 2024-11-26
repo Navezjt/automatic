@@ -50,44 +50,45 @@ convert_diffusers_name_to_compvis = lora_convert.convert_diffusers_name_to_compv
 def assign_network_names_to_compvis_modules(sd_model):
     if sd_model is None:
         return
+    sd_model = getattr(shared.sd_model, "pipe", shared.sd_model)  # wrapped model compatiblility
     network_layer_mapping = {}
     if shared.native:
-        if hasattr(shared.sd_model, 'text_encoder') and shared.sd_model.text_encoder is not None:
-            for name, module in shared.sd_model.text_encoder.named_modules():
-                prefix = "lora_te1_" if hasattr(shared.sd_model, 'text_encoder_2') else "lora_te_"
+        if hasattr(sd_model, 'text_encoder') and sd_model.text_encoder is not None:
+            for name, module in sd_model.text_encoder.named_modules():
+                prefix = "lora_te1_" if hasattr(sd_model, 'text_encoder_2') else "lora_te_"
                 network_name = prefix + name.replace(".", "_")
                 network_layer_mapping[network_name] = module
                 module.network_layer_name = network_name
-        if hasattr(shared.sd_model, 'text_encoder_2'):
-            for name, module in shared.sd_model.text_encoder_2.named_modules():
+        if hasattr(sd_model, 'text_encoder_2'):
+            for name, module in sd_model.text_encoder_2.named_modules():
                 network_name = "lora_te2_" + name.replace(".", "_")
                 network_layer_mapping[network_name] = module
                 module.network_layer_name = network_name
-        if hasattr(shared.sd_model, 'unet'):
-            for name, module in shared.sd_model.unet.named_modules():
+        if hasattr(sd_model, 'unet'):
+            for name, module in sd_model.unet.named_modules():
                 network_name = "lora_unet_" + name.replace(".", "_")
                 network_layer_mapping[network_name] = module
                 module.network_layer_name = network_name
-        if hasattr(shared.sd_model, 'transformer'):
-            for name, module in shared.sd_model.transformer.named_modules():
+        if hasattr(sd_model, 'transformer'):
+            for name, module in sd_model.transformer.named_modules():
                 network_name = "lora_transformer_" + name.replace(".", "_")
                 network_layer_mapping[network_name] = module
                 if "norm" in network_name and "linear" not in network_name:
                     continue
                 module.network_layer_name = network_name
     else:
-        if not hasattr(shared.sd_model, 'cond_stage_model'):
+        if not hasattr(sd_model, 'cond_stage_model'):
             sd_model.network_layer_mapping = {}
             return
-        for name, module in shared.sd_model.cond_stage_model.wrapped.named_modules():
+        for name, module in sd_model.cond_stage_model.wrapped.named_modules():
             network_name = name.replace(".", "_")
             network_layer_mapping[network_name] = module
             module.network_layer_name = network_name
-        for name, module in shared.sd_model.model.named_modules():
+        for name, module in sd_model.model.named_modules():
             network_name = name.replace(".", "_")
             network_layer_mapping[network_name] = module
             module.network_layer_name = network_name
-    sd_model.network_layer_mapping = network_layer_mapping
+    shared.sd_model.network_layer_mapping = network_layer_mapping
 
 
 def load_diffusers(name, network_on_disk, lora_scale=shared.opts.extra_networks_default_multiplier) -> network.Network:
@@ -127,6 +128,8 @@ def load_diffusers(name, network_on_disk, lora_scale=shared.opts.extra_networks_
 
 
 def load_network(name, network_on_disk) -> network.Network:
+    if not shared.sd_loaded:
+        return None
     t0 = time.time()
     cached = lora_cache.get(name, None)
     if debug:
@@ -224,6 +227,7 @@ def load_networks(names, te_multipliers=None, unet_multipliers=None, dyn_dims=No
     loaded_networks.clear()
     diffuser_loaded.clear()
     diffuser_scales.clear()
+
     for i, (network_on_disk, name) in enumerate(zip(networks_on_disk, names)):
         net = None
         if network_on_disk is not None:
@@ -259,14 +263,22 @@ def load_networks(names, te_multipliers=None, unet_multipliers=None, dyn_dims=No
     while len(lora_cache) > shared.opts.lora_in_memory_limit:
         name = next(iter(lora_cache))
         lora_cache.pop(name, None)
+
     if len(diffuser_loaded) > 0:
-        shared.log.debug(f'Load network: type=LoRA loaded={diffuser_loaded} scales={diffuser_scales}')
-        shared.sd_model.set_adapters(adapter_names=diffuser_loaded, adapter_weights=diffuser_scales)
-        if shared.opts.lora_fuse_diffusers:
-            shared.sd_model.fuse_lora(adapter_names=diffuser_loaded, lora_scale=1.0, fuse_unet=True, fuse_text_encoder=True) # fuse uses fixed scale since later apply does the scaling
-            shared.sd_model.unload_lora_weights()
+        shared.log.debug(f'Load network: type=LoRA loaded={diffuser_loaded} available={shared.sd_model.get_list_adapters()} active={shared.sd_model.get_active_adapters()} scales={diffuser_scales}')
+        try:
+            shared.sd_model.set_adapters(adapter_names=diffuser_loaded, adapter_weights=diffuser_scales)
+            if shared.opts.lora_fuse_diffusers:
+                shared.sd_model.fuse_lora(adapter_names=diffuser_loaded, lora_scale=1.0, fuse_unet=True, fuse_text_encoder=True) # fuse uses fixed scale since later apply does the scaling
+                shared.sd_model.unload_lora_weights()
+        except Exception as e:
+            shared.log.error(f'Load network: type=LoRA {e}')
+            if debug:
+                errors.display(e, 'LoRA')
+
     if len(loaded_networks) > 0 and debug:
         shared.log.debug(f'Load network: type=LoRA loaded={len(loaded_networks)} cache={list(lora_cache)}')
+
     devices.torch_gc()
 
     if recompile_model:
@@ -531,18 +543,14 @@ def network_MultiheadAttention_load_state_dict(self, *args, **kwargs):
 
 
 def list_available_networks():
+    t0 = time.time()
     available_networks.clear()
     available_network_aliases.clear()
     forbidden_network_aliases.clear()
     available_network_hash_lookup.clear()
     forbidden_network_aliases.update({"none": 1, "Addams": 1})
-    directories = []
-    if os.path.exists(shared.cmd_opts.lora_dir):
-        directories.append(shared.cmd_opts.lora_dir)
-    else:
+    if not os.path.exists(shared.cmd_opts.lora_dir):
         shared.log.warning(f'LoRA directory not found: path="{shared.cmd_opts.lora_dir}"')
-    if os.path.exists(shared.cmd_opts.lyco_dir) and shared.cmd_opts.lyco_dir != shared.cmd_opts.lora_dir:
-        directories.append(shared.cmd_opts.lyco_dir)
 
     def add_network(filename):
         if not os.path.isfile(filename):
@@ -563,11 +571,12 @@ def list_available_networks():
         except OSError as e:  # should catch FileNotFoundError and PermissionError etc.
             shared.log.error(f'LoRA: filename="{filename}" {e}')
 
-    candidates = list(files_cache.list_files(*directories, ext_filter=[".pt", ".ckpt", ".safetensors"]))
+    candidates = list(files_cache.list_files(shared.cmd_opts.lora_dir, ext_filter=[".pt", ".ckpt", ".safetensors"]))
     with concurrent.futures.ThreadPoolExecutor(max_workers=shared.max_workers) as executor:
         for fn in candidates:
             executor.submit(add_network, fn)
-    shared.log.info(f'Available LoRAs: items={len(available_networks)} folders={len(forbidden_network_aliases)}')
+    t1 = time.time()
+    shared.log.info(f'Available LoRAs: path="{shared.cmd_opts.lora_dir}" items={len(available_networks)} folders={len(forbidden_network_aliases)} time={t1 - t0:.2f}')
 
 
 def infotext_pasted(infotext, params): # pylint: disable=W0613

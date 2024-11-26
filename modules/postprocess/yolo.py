@@ -18,17 +18,19 @@ PREDEFINED = [ # <https://huggingface.co/vladmandic/yolo-detailers/tree/main>
 
 
 class YoloResult:
-    def __init__(self, cls: int, label: str, score: float, box: list[int], mask: Image.Image = None, item: Image.Image = None, size: float = 0, width = 0, height = 0, args = {}):
+    def __init__(self, cls: int, label: str, score: float, box: list[int], mask: Image.Image = None, item: Image.Image = None, width = 0, height = 0, args = {}):
         self.cls = cls
         self.label = label
         self.score = score
         self.box = box
         self.mask = mask
         self.item = item
-        self.size = size
         self.width = width
         self.height = height
         self.args = args
+
+    def __str__(self):
+        return f'cls={self.cls} label={self.label} score={self.score} box={self.box} mask={self.mask} item={self.item} size={self.width}x{self.height} args={self.args}'
 
 
 class YoloRestorer(Detailer):
@@ -77,7 +79,15 @@ class YoloRestorer(Detailer):
             offload: bool = shared.opts.detailer_unload,
         ) -> list[YoloResult]:
 
+        if model is None or (isinstance(model, str) and len(model) == 0):
+            model = 'yolo11m'
         result = []
+        if isinstance(model, str):
+            cached = self.models.get(model, None)
+            if cached is None:
+                _, model = self.load(model)
+            else:
+                model = cached
         if model is None:
             return result
         args = {
@@ -123,21 +133,25 @@ class YoloRestorer(Detailer):
                 box = box.tolist()
                 mask_image = None
                 w, h = box[2] - box[0], box[3] - box[1]
-                size = w * h / (image.width * image.height)
-                if (min(w, h) > shared.opts.detailer_min_size if shared.opts.detailer_min_size > 0 else True) and (max(w, h) < shared.opts.detailer_max_size if shared.opts.detailer_max_size > 0 else True):
+                x_size, y_size = w/image.width, h/image.height
+                min_size = shared.opts.detailer_min_size if shared.opts.detailer_min_size > 0 and shared.opts.detailer_min_size < 1 else 0
+                max_size = shared.opts.detailer_max_size if shared.opts.detailer_max_size > 0 and shared.opts.detailer_max_size < 1 else 1
+                if x_size >= min_size and y_size >=min_size and x_size <= max_size and y_size <= max_size:
                     if mask:
                         mask_image = image.copy()
                         mask_image = Image.new('L', image.size, 0)
                         draw = ImageDraw.Draw(mask_image)
                         draw.rectangle(box, fill="white", outline=None, width=0)
                         cropped = image.crop(box)
-                        result.append(YoloResult(cls=cls, label=label, score=round(score, 2), box=box, mask=mask_image, item=cropped, size=size, width=w, height=h, args=args))
+                        res = YoloResult(cls=cls, label=label, score=round(score, 2), box=box, mask=mask_image, item=cropped, width=w, height=h, args=args)
+                        result.append(res)
                 if len(result) >= shared.opts.detailer_max:
                     break
         return result
 
     def load(self, model_name: str = None):
         from modules import modelloader
+        model = None
         self.dependencies()
         if model_name is None:
             model_name = list(self.list)[0]
@@ -150,15 +164,15 @@ class YoloRestorer(Detailer):
             try:
                 model_file = modelloader.load_file_from_url(url=model_url, model_dir=shared.opts.yolo_dir, file_name=file_name)
                 if model_file is not None:
-                    from ultralytics import YOLO # pylint: disable=import-outside-toplevel
-                    model = YOLO(model_file)
+                    import ultralytics
+                    model = ultralytics.YOLO(model_file)
                     classes = list(model.names.values())
-                    shared.log.info(f'Load: type=Detailer name="{model_name}" model="{model_file}" classes={classes}')
+                    shared.log.info(f'Load: type=Detailer name="{model_name}" model="{model_file}" ultralytics={ultralytics.__version__} classes={classes}')
                     self.models[model_name] = model
                     return model_name, model
             except Exception as e:
                 shared.log.error(f'Load: type=Detailer name="{model_name}" error="{e}"')
-        return None
+        return None, None
 
     def restore(self, np_image, p: processing.StableDiffusionProcessing = None):
         if hasattr(p, 'recursion'):
@@ -188,15 +202,22 @@ class YoloRestorer(Detailer):
                 shared.log.info(f'Detailer: model="{name}" no items detected')
                 continue
 
-            pp = None
             shared.opts.data['mask_apply_overlay'] = True
             resolution = 512 if shared.sd_model_type in ['none', 'sd', 'lcm', 'unknown'] else 1024
+            orig_prompt: str = orig_p.get('all_prompts', [''])[0]
+            orig_negative: str = orig_p.get('all_negative_prompts', [''])[0]
             prompt: str = orig_p.get('refiner_prompt', '')
             negative: str = orig_p.get('refiner_negative', '')
             if len(prompt) == 0:
-                prompt = orig_p.get('all_prompts', [''])[0]
+                prompt = orig_prompt
+            else:
+                prompt = prompt.replace('[PROMPT]', orig_prompt)
+                prompt = prompt.replace('[prompt]', orig_prompt)
             if len(negative) == 0:
-                negative = orig_p.get('all_negative_prompts', [''])[0]
+                negative = orig_negative
+            else:
+                negative = negative.replace('[PROMPT]', orig_negative)
+                negative = negative.replace('[prompt]', orig_negative)
             prompt_lines = prompt.split('\n')
             negative_lines = negative.split('\n')
             prompt = prompt_lines[i % len(prompt_lines)]
@@ -315,8 +336,10 @@ class YoloRestorer(Detailer):
                 min_confidence = gr.Slider(label="Min confidence", elem_id=f"{tab}_detailer_conf", value=shared.opts.detailer_conf, minimum=0.0, maximum=1.0, step=0.05)
                 iou = gr.Slider(label="Max overlap", elem_id=f"{tab}_detailer_iou", value=shared.opts.detailer_iou, minimum=0, maximum=1.0, step=0.05)
             with gr.Row():
-                min_size = gr.Slider(label="Min size", elem_id=f"{tab}_detailer_min_size", value=shared.opts.detailer_min_size, minimum=0, maximum=1024, step=1)
-                max_size = gr.Slider(label="Max size", elem_id=f"{tab}_detailer_max_size", value=shared.opts.detailer_max_size, minimum=0, maximum=1024, step=1)
+                min_size = shared.opts.detailer_min_size if shared.opts.detailer_min_size < 1 else 0.0
+                min_size = gr.Slider(label="Min size", elem_id=f"{tab}_detailer_min_size", value=min_size, minimum=0.0, maximum=1.0, step=0.05)
+                max_size = shared.opts.detailer_max_size if shared.opts.detailer_max_size < 1 and shared.opts.detailer_max_size > 0 else 1.0
+                max_size = gr.Slider(label="Max size", elem_id=f"{tab}_detailer_max_size", value=max_size, minimum=0.0, maximum=1.0, step=0.05)
             detailers.change(fn=ui_settings_change, inputs=[detailers, classes, strength, padding, blur, min_confidence, max_detected, min_size, max_size, iou], outputs=[])
             classes.change(fn=ui_settings_change, inputs=[detailers, classes, strength, padding, blur, min_confidence, max_detected, min_size, max_size, iou], outputs=[])
             strength.change(fn=ui_settings_change, inputs=[detailers, classes, strength, padding, blur, min_confidence, max_detected, min_size, max_size, iou], outputs=[])

@@ -2,7 +2,7 @@ import os
 import glob
 from copy import deepcopy
 import torch
-from modules import shared, errors, paths, devices, script_callbacks, sd_models
+from modules import shared, errors, paths, devices, script_callbacks, sd_models, sd_detect
 
 
 vae_ignore_keys = {"model_ema.decay", "model_ema.num_updates"}
@@ -206,8 +206,8 @@ def load_vae_diffusers(model_file, vae_file=None, vae_source="unknown-source"):
         diffusers_load_config['variant'] = shared.opts.diffusers_vae_load_variant
     if shared.opts.diffusers_vae_upcast != 'default':
         diffusers_load_config['force_upcast'] = True if shared.opts.diffusers_vae_upcast == 'true' else False
-    _pipeline, model_type = sd_models.detect_pipeline(model_file, 'vae')
-    vae_config = sd_models.get_load_config(model_file, model_type, config_type='json')
+    _pipeline, model_type = sd_detect.detect_pipeline(model_file, 'vae')
+    vae_config = sd_detect.get_load_config(model_file, model_type, config_type='json')
     if vae_config is not None:
         diffusers_load_config['config'] = os.path.join(vae_config, 'vae')
     shared.log.info(f'Load module: type=VAE model="{vae_file}" source={vae_source} config={diffusers_load_config}')
@@ -289,7 +289,7 @@ def reload_vae_weights(sd_model=None, vae_file=unspecified):
         if vae_file is not None:
             shared.log.info(f"VAE weights loaded: {vae_file}")
     else:
-        if hasattr(sd_model, "vae") and hasattr(sd_model, "sd_checkpoint_info"):
+        if hasattr(sd_model, "vae") and getattr(sd_model, "sd_checkpoint_info", None) is not None:
             vae = load_vae_diffusers(sd_model.sd_checkpoint_info.filename, vae_file, vae_source)
             if vae is not None:
                 if not hasattr(sd_model, 'original_vae'):

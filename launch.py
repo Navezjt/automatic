@@ -164,7 +164,6 @@ def start_server(immediate=True, server=None):
     module_spec = importlib.util.spec_from_file_location('webui', 'webui.py')
     server = importlib.util.module_from_spec(module_spec)
     installer.log.debug(f'Starting module: {server}')
-    get_custom_args()
     module_spec.loader.exec_module(server)
     uvicorn = None
     if args.test:
@@ -205,11 +204,13 @@ def main():
     installer.check_python()
     if args.reset:
         installer.git_reset()
-    if args.skip_git:
+    if args.skip_git or args.skip_all:
         installer.log.info('Skipping GIT operations')
     installer.check_version()
     installer.log.info(f'Platform: {installer.print_dict(installer.get_platform())}')
-    if not args.skip_env:
+    installer.check_venv()
+    installer.log.info(f'Args: {sys.argv[1:]}')
+    if not args.skip_env or args.skip_all:
         installer.set_environment()
     if args.uv:
         installer.install("uv", "uv")
@@ -239,13 +240,14 @@ def main():
             installer.install_extensions()
             installer.install_requirements() # redo requirements since extensions may change them
             installer.update_wiki()
-            if installer.errors == 0:
+            if len(installer.errors) == 0:
                 installer.log.debug(f'Setup complete without errors: {round(time.time())}')
             else:
                 installer.log.warning(f'Setup complete with errors: {installer.errors}')
                 installer.log.warning(f'See log file for more details: {installer.log_file}')
     installer.extensions_preload(parser) # adds additional args from extensions
     args = installer.parse_args(parser)
+    get_custom_args()
 
     uv, instance = start_server(immediate=True, server=None)
     while True:
@@ -256,9 +258,7 @@ def main():
             alive = False
             requests = 0
         if round(time.time()) % 120 == 0:
-            state = f'job="{instance.state.job}" {instance.state.job_no}/{instance.state.job_count}' if instance.state.job != '' or instance.state.job_no != 0 or instance.state.job_count != 0 else 'idle'
-            uptime = round(time.time() - instance.state.server_start)
-            installer.log.debug(f'Server: alive={alive} jobs={instance.state.total_jobs} requests={requests} uptime={uptime} memory={get_memory_stats()} backend={instance.backend} state={state}')
+            installer.log.debug(f'Server: alive={alive} requests={requests} memory={get_memory_stats()} {instance.state.status()}')
         if not alive:
             if uv is not None and uv.wants_restart:
                 installer.log.info('Server restarting...')

@@ -1,16 +1,247 @@
 # Change Log for SD.Next
 
-## Update for 2024-10-24
+## Update for 2024-11-22
 
-Improvements:
-- SD3 loader enhancements
+- Model loader improvements:  
+  - detect model components on model load fail  
+  - Flux, SD35: force unload model  
+  - Flux: apply `bnb` quant when loading *unet/transformer*  
+  - Flux: all-in-one safetensors  
+    example: <https://civitai.com/models/646328?modelVersionId=1040235>  
+  - Flux: do not recast quants  
+- Sampler improvements  
+  - update DPM FlowMatch samplers  
+- Fixes:  
+  - update `diffusers`  
+  - fix README links  
+  - fix sdxl controlnet single-file loader  
+  - relax settings validator  
+
+## Update for 2024-11-21
+
+### Highlights for 2024-11-21
+
+Three weeks is a long time in Generative AI world - and we're back with ~140 commits worth of updates!
+
+*What's New?*
+
+First, a massive update to docs including new UI top-level **info** tab with access to [changelog](https://github.com/vladmandic/automatic/blob/master/CHANGELOG.md) and [wiki](https://github.com/vladmandic/automatic/wiki), many updates and new articles AND full **built-in documentation search** capabilities
+
+#### New integrations
+
+- [PuLID](https://github.com/ToTheBeginning/PuLID): Pure and Lightning ID Customization via Contrastive Alignment
+- [InstantX InstantIR](https://github.com/instantX-research/InstantIR): Blind Image Restoration with Instant Generative Reference
+- [nVidia Labs ConsiStory](https://github.com/NVlabs/consistory): Consistent Image Generation
+- [MiaoshouAI PromptGen v2.0](https://huggingface.co/MiaoshouAI/Florence-2-base-PromptGen-v2.0) VQA captioning
+
+#### Workflow Improvements
+
+- Native **Docker** support
+- **SD3x & Flux.1**: more ControlNets, all-in-one-safetensors, DPM samplers, skip-layer-guidance, etc.
+- **XYZ grid**: benchmarking, video creation, etc.
+- Enhanced **prompt** parsing
+- **UI** improvements
+- **Installer** self-healing `venv`
+
+And quite a few more improvements and fixes since the last update!
+For full list and details see changelog...
+
+[README](https://github.com/vladmandic/automatic/blob/master/README.md) | [CHANGELOG](https://github.com/vladmandic/automatic/blob/master/CHANGELOG.md) | [WiKi](https://github.com/vladmandic/automatic/wiki) | [Discord](https://discord.com/invite/sd-next-federal-batch-inspectors-1101998836328697867)
+
+### Details for 2024-11-21
+
+- Docs:  
+  - new top-level **info** tab with access to [changelog](https://github.com/vladmandic/automatic/blob/master/CHANGELOG.md) and [wiki](https://github.com/vladmandic/automatic/wiki)  
+  - UI built-in [changelog](https://github.com/vladmandic/automatic/blob/master/CHANGELOG.md) search  
+    since changelog is the best up-to-date source of info  
+    go to info -> changelog and search/highligh/navigate directly in UI!  
+  - UI built-in [wiki](https://github.com/vladmandic/automatic/wiki)  
+    go to info -> wiki and search wiki pages directly in UI!  
+  - major [Wiki](https://github.com/vladmandic/automatic/wiki) and [Home](https://github.com/vladmandic/automatic) updates  
+  - updated API swagger docs for at `/docs`  
+- Integrations:  
+  - [PuLID](https://github.com/ToTheBeginning/PuLID): Pure and Lightning ID Customization via Contrastive Alignment  
+    - advanced method of face id transfer with better quality as well as control over identity and appearance  
+      try it out, likely the best quality available for sdxl models  
+    - select in *scripts -> pulid*  
+    - compatible with *sdxl* for text-to-image, image-to-image, inpaint, refine, detailer workflows  
+    - can be used in xyz grid  
+    - *note*: this module contains several advanced features on top of original implementation  
+  - [InstantIR](https://github.com/instantX-research/InstantIR): Blind Image Restoration with Instant Generative Reference  
+    - alternative to traditional `img2img` with more control over restoration process  
+    - select in *image -> scripts -> instantir*  
+    - compatible with *sdxl*  
+    - *note*: after used once it cannot be unloaded without reloading base model  
+  - [ConsiStory](https://github.com/NVlabs/consistory): Consistent Image Generation  
+    - create consistent anchor image and then generate images that are consistent with anchor  
+    - select in *scripts -> consistory*  
+    - compatible with *sdxl*  
+    - *note*: very resource intensive and not compatible with model offloading  
+    - *note*: changing default parameters can lead to unexpected results and/or failures  
+    - *note*: after used once it cannot be unloaded without reloading base model  
+  - [MiaoshouAI PromptGen v2.0](https://huggingface.co/MiaoshouAI/Florence-2-base-PromptGen-v2.0) base and large:  
+    - *in process -> visual query*  
+    - caption modes:  
+      `<GENERATE_TAGS>` generate tags  
+      `<CAPTION>`, `<DETAILED_CAPTION>`, `<MORE_DETAILED_CAPTION>` caption image  
+      `<ANALYZE>` image composition  
+      `<MIXED_CAPTION>`, `<MIXED_CAPTION_PLUS>` detailed caption and tags with optional analyze  
+
+- Model improvements:  
+  - SD35: **ControlNets**:  
+    - *InstantX Canny, Pose, Depth, Tile*  
+    - *Alimama Inpainting, SoftEdge*  
+    - *note*: that just like with FLUX.1 or any large model, ControlNet are also large and can push your system over the limit  
+      e.g. SD3 controlnets vary from 1GB to over 4GB in size  
+  - SD35: **All-in-one** safetensors  
+    - *examples*: [large](https://civitai.com/models/882666/sd35-large-google-flan?modelVersionId=1003031), [medium](https://civitai.com/models/900327)  
+    - *note*: enable *bnb* on-the-fly quantization for even bigger gains  
+  - SD35: **skip-layer-guidance**  
+    - enable in *scripts -> slg*
+    - allows for granular strength/start/stop control of guidance for each layer of the model  
+  - [NoobAI XL ControlNets](https://huggingface.co/collections/Eugeoter/controlnext-673161eae023f413e0432799), thanks @lbeltrame
+
+- Workflow improvements:  
+  - Native Docker support with pre-defined [Dockerfile](https://github.com/vladmandic/automatic/blob/dev/Dockerfile)
+  - Samplers:
+    - **FlowMatch samplers**:
+      - Applicable to SD 3.x and Flux.1 models
+      - Complete family: *DPM2, DPM2a, DPM2++, DPM2++ 2M, DPM2++ 2S, DPM2++ SDE, DPM2++ 2M SDE, DPM2++ 3M SDE*
+    - **Beta and Exponential** sigma method enabled for all samplers
+  - **XYZ grid**:  
+    - optional time benchmark info to individual images  
+    - optional add params to individual images  
+    - create video from generated grid images  
+      supports all standard video types and interpolation  
+  - **Prompt parser**:  
+    - support for prompt scheduling  
+    - renamed parser options: `native`, `xhinker`, `compel`, `a1111`, `fixed`  
+    - parser options are available in xyz grid  
+    - improved caching  
+  - **UI**:  
+    - better gallery and networks sidebar sizing  
+    - add additional [hotkeys](https://github.com/vladmandic/automatic/wiki/Hotkeys)  
+    - add show networks on startup setting  
+    - better mapping of networks previews  
+    - optimize networks display load  
+  - Image2image:  
+    - integrated refine/upscale/hires workflow  
+- Other:  
+  - **Installer**:  
+    - Log `venv` and package search paths  
+    - Auto-remove invalid packages from `venv/site-packages`  
+      e.g. packages starting with `~` which are left-over due to windows access violation  
+    - Requirements: update  
+  - Scripts:  
+    - More verbose descriptions for all scripts  
+  - Model loader:  
+    - Report modules included in safetensors when attempting to load a model  
+  - CLI:  
+    - refactor command line params  
+      run `webui.sh`/`webui.bat` with `--help` to see all options  
+    - added `cli/model-metadata.py` to display metadata in any safetensors file  
+    - added `cli/model-keys.py` to quicky display content of any safetensors file  
+  - Internal:  
+    - Auto pipeline switching coveres wrapper classes and nested pipelines  
+    - Full settings validation on load of `config.json`  
+    - Refactor of all params in main processing classes  
+    - Improve API scripts usage resiliency  
+
+- Fixes:  
+  - custom watermark add alphablending  
+  - fix xyz grid include images  
+  - fix xyz skip on interrupted  
+  - fix vqa models ignoring hfcache folder setting  
+  - fix network height in standard vs modern ui  
+  - fix k-diff enum on startup  
+  - fix text2video scripts  
+  - multiple xyz-grid fixes  
+  - dont uninstall flash-attn  
+  - ui css fixes  
+
+## Update for 2024-11-01
+
+Smaller release just 3 days after the last one, but with some important fixes and improvements.  
+This release can be considered an LTS release before we kick off the next round of major updates.  
+
+- Other:
+  - Repo: move screenshots to GH pages
+  - Update requirements
+- Fixes:
+  - detailer min/max size as fractions of image size  
+  - ipadapter load on-demand  
+  - ipadapter face use correct yolo model  
+  - list diffusers remove duplicates  
+  - fix legacy extensions access to shared objects  
+  - fix diffusers load from folder  
+  - fix lora enum logging on windows  
+  - fix xyz grid with batch count  
+  - move dowwloads of some auxillary models to hfcache instead of models folder  
+
+## Update for 2024-10-29
+
+### Highlights for 2024-10-29
+
+- Support for **all SD3.x variants**  
+  *SD3.0-Medium, SD3.5-Medium, SD3.5-Large, SD3.0-Large-Turbo*
+- Allow quantization using `bitsandbytes` on-the-fly during models load
+  Load any variant of SD3.x or FLUX.1 and apply quantization during load without the need for pre-quantized models  
+- Allow for custom model URL in standard model selector  
+  Can be used to specify any model from *HuggingFace* or *CivitAI*  
+- Full support for `torch==2.5.1`
+- New wiki articles: [Gated Access](https://github.com/vladmandic/automatic/wiki/Gated), [Quantization](https://github.com/vladmandic/automatic/wiki/Quantization), [Offloading](https://github.com/vladmandic/automatic/wiki/Offload)  
+
+Plus tons of smaller improvements and cumulative fixes reported since last release  
+
+[README](https://github.com/vladmandic/automatic/blob/master/README.md) | [CHANGELOG](https://github.com/vladmandic/automatic/blob/master/CHANGELOG.md) | [WiKi](https://github.com/vladmandic/automatic/wiki) | [Discord](https://discord.com/invite/sd-next-federal-batch-inspectors-1101998836328697867)
+
+### Details for 2024-10-29
+
+- model selector:
+  - change-in-behavior
+  - when typing, it will auto-load model as soon as exactly one match is found
+  - allows entering model that are not on the list which triggers huggingface search  
+    e.g. `stabilityai/stable-diffusion-xl-base-1.0`  
+    partial search hits are displayed in the log  
+    if exact model is found, it will be auto-downloaded and loaded  
+  - allows entering civitai direct download link which triggers model download  
+    e.g. `https://civitai.com/api/download/models/72396?type=Model&format=SafeTensor&size=full&fp=fp16`  
+  - auto-search-and-download can be disabled in settings -> models -> auto-download  
+    this also disables reference models as they are auto-downloaded on first use as well  
+- sd3 enhancements:  
+  - allow on-the-fly bnb quantization during load
   - report when loading incomplete model  
-  - handle missing model components  
+  - handle missing model components during load  
   - handle component preloading  
-- OpenVINO: add accuracy option  
-- ZLUDA: guess GPU arch  
+  - native lora handler  
+  - support for all sd35 variants: *medium/large/large-turbo*
+  - gguf transformer loader (prototype)  
+- flux.1 enhancements:  
+  - allow on-the-fly bnb quantization during load
+- samplers:
+  - support for original k-diffusion samplers  
+    select via *scripts -> k-diffusion -> sampler*  
+- ipadapter:
+  - list available adapters based on loaded model type
+  - add adapter `ostris consistency` for sd15/sdxl
+- detailer:
+  - add `[prompt]` to refine/defailer prompts as placeholder referencing original prompt  
+- torch
+  - use `torch==2.5.1` by default on supported platforms
+  - CUDA set device memory limit
+    in *settings -> compute settings -> torch memory limit*  
+    default=0 meaning no limit, if set torch will limit memory usage to specified fraction  
+    *note*: this is not a hard limit, torch will try to stay under this value  
+- compute backends:
+  - OpenVINO: add accuracy option  
+  - ZLUDA: guess GPU arch  
+- major model load refactor
+- wiki: new articles
+  - [Gated Access Wiki](https://github.com/vladmandic/automatic/wiki/Gated)  
+  - [Quantization Wiki](https://github.com/vladmandic/automatic/wiki/Quantization)  
+  - [Offloading Wiki](https://github.com/vladmandic/automatic/wiki/Offload)  
 
-Fixes:  
+fixes:  
 - fix send-to-control  
 - fix k-diffusion  
 - fix sd3 img2img and hires  

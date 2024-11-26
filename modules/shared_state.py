@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import datetime
 from modules.errors import log
@@ -62,6 +61,38 @@ class State:
         }
         return obj
 
+    def status(self):
+        from modules import progress
+        from modules.api import models
+        res = models.ResStatus(
+            task=self.job,
+            id=progress.current_task or '',
+            job=max(self.job_no, 0),
+            jobs=max(self.frame_count, self.job_count, self.job_no),
+            total=self.total_jobs,
+            timestamp=self.job_timestamp if self.job != '' else None,
+            step=self.sampling_step,
+            steps=self.sampling_steps,
+            queued=len(progress.pending_tasks),
+            status='unknown',
+            uptime = round(time.time() - self.server_start)
+        )
+        res.step = res.steps * res.job + res.step
+        res.steps = res.steps * res.jobs
+        res.progress = round(min(1, abs(res.step / res.steps) if res.steps > 0 else 0), 2)
+        res.elapsed = round(time.time() - self.time_start, 2) if self.time_start is not None else None
+        predicted = round(res.elapsed / res.progress, 2) if res.progress > 0 and res.elapsed is not None else None
+        res.eta = round(predicted - res.elapsed, 2) if predicted is not None else None
+        if self.paused:
+            res.status = 'paused'
+        elif self.interrupted:
+            res.status = 'interrupted'
+        elif self.skipped:
+            res.status = 'skipped'
+        else:
+            res.status = 'running' if self.job != '' else 'idle'
+        return res
+
     def begin(self, title="", api=None):
         import modules.devices
         self.total_jobs += 1
@@ -88,8 +119,8 @@ class State:
     def end(self, api=None):
         import modules.devices
         if self.time_start is None: # someone called end before being
-            fn = f'{sys._getframe(2).f_code.co_name}:{sys._getframe(1).f_code.co_name}' # pylint: disable=protected-access
-            log.debug(f'Access state.end: {fn}') # pylint: disable=protected-access
+            # fn = f'{sys._getframe(2).f_code.co_name}:{sys._getframe(1).f_code.co_name}' # pylint: disable=protected-access
+            # log.debug(f'Access state.end: {fn}') # pylint: disable=protected-access
             self.time_start = time.time()
         if self.debug_output:
             log.debug(f'State end: {self.job} time={time.time() - self.time_start:.2f}')

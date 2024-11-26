@@ -66,11 +66,11 @@ def control_run(state: str = '',
                 resize_mode_before: int = 0, resize_name_before: str = 'None', resize_context_before: str = 'None', width_before: int = 512, height_before: int = 512, scale_by_before: float = 1.0, selected_scale_tab_before: int = 0,
                 resize_mode_after: int = 0, resize_name_after: str = 'None', resize_context_after: str = 'None', width_after: int = 0, height_after: int = 0, scale_by_after: float = 1.0, selected_scale_tab_after: int = 0,
                 resize_mode_mask: int = 0, resize_name_mask: str = 'None', resize_context_mask: str = 'None', width_mask: int = 0, height_mask: int = 0, scale_by_mask: float = 1.0, selected_scale_tab_mask: int = 0,
-                denoising_strength: float = 0, batch_count: int = 1, batch_size: int = 1,
-                enable_hr: bool = False, hr_sampler_index: int = None, hr_denoising_strength: float = 0.3, hr_resize_mode: int = 0, hr_resize_context: str = 'None', hr_upscaler: str = None, hr_force: bool = False, hr_second_pass_steps: int = 20,
+                denoising_strength: float = 0.3, batch_count: int = 1, batch_size: int = 1,
+                enable_hr: bool = False, hr_sampler_index: int = None, hr_denoising_strength: float = 0.0, hr_resize_mode: int = 0, hr_resize_context: str = 'None', hr_upscaler: str = None, hr_force: bool = False, hr_second_pass_steps: int = 20,
                 hr_scale: float = 1.0, hr_resize_x: int = 0, hr_resize_y: int = 0, refiner_steps: int = 5, refiner_start: float = 0.0, refiner_prompt: str = '', refiner_negative: str = '',
                 video_skip_frames: int = 0, video_type: str = 'None', video_duration: float = 2.0, video_loop: bool = False, video_pad: int = 0, video_interpolate: int = 0,
-                *input_script_args
+                *input_script_args,
         ):
     # handle optional initialization via ui
     for u in units:
@@ -564,8 +564,8 @@ def control_run(state: str = '',
                             return [], '', '', 'Reference mode without image'
                     elif unit_type == 'controlnet' and has_models:
                         if input_type == 0: # Control only
-                            if shared.sd_model_type == 'f1' and 'control_image' not in p.task_args:
-                                p.task_args['control_image'] = p.init_images # flux controlnet mandates this
+                            if shared.sd_model_type in ['f1', 'sd3'] and 'control_image' not in p.task_args:
+                                p.task_args['control_image'] = p.init_images # some controlnets mandate this
                                 p.task_args['strength'] = p.denoising_strength
                         elif input_type == 1: # Init image same as control
                             p.task_args['control_image'] = p.init_images # switch image and control_image

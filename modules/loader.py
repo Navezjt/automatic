@@ -44,6 +44,8 @@ if ".dev" in torch.__version__ or "+git" in torch.__version__:
 timer.startup.record("torch")
 
 import transformers # pylint: disable=W0611,C0411
+from transformers import logging as transformers_logging # pylint: disable=W0611,C0411
+transformers_logging.set_verbosity_error()
 timer.startup.record("transformers")
 
 import accelerate # pylint: disable=W0611,C0411
@@ -61,6 +63,9 @@ errors.install([gradio])
 import pydantic # pylint: disable=W0611,C0411
 timer.startup.record("pydantic")
 
+import diffusers.utils.import_utils # pylint: disable=W0611,C0411
+diffusers.utils.import_utils._k_diffusion_available = True # pylint: disable=protected-access # monkey-patch since we use k-diffusion from git
+diffusers.utils.import_utils._k_diffusion_version = '0.0.12' # pylint: disable=protected-access
 import diffusers # pylint: disable=W0611,C0411
 import diffusers.loaders.single_file # pylint: disable=W0611,C0411
 import huggingface_hub # pylint: disable=W0611,C0411
@@ -121,4 +126,5 @@ except ImportError:
     except ImportError:
         pass  # shrug...
 
-errors.log.info(f'System packages: {get_packages()}')
+errors.log.info(f'Torch: torch=={torch.__version__} torchvision=={torchvision.__version__}')
+errors.log.info(f'Packages: diffusers=={diffusers.__version__} transformers=={transformers.__version__} accelerate=={accelerate.__version__} gradio=={gradio.__version__}')
