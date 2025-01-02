@@ -88,7 +88,7 @@ def assign_network_names_to_compvis_modules(sd_model):
             network_name = name.replace(".", "_")
             network_layer_mapping[network_name] = module
             module.network_layer_name = network_name
-    shared.sd_model.network_layer_mapping = network_layer_mapping
+    sd_model.network_layer_mapping = network_layer_mapping
 
 
 def load_diffusers(name, network_on_disk, lora_scale=shared.opts.extra_networks_default_multiplier) -> network.Network:
@@ -141,7 +141,7 @@ def load_network(name, network_on_disk) -> network.Network:
     sd = sd_models.read_state_dict(network_on_disk.filename, what='network')
     if shared.sd_model_type == 'f1':  # if kohya flux lora, convert state_dict
         sd = lora_convert._convert_kohya_flux_lora_to_diffusers(sd) or sd  # pylint: disable=protected-access
-    assign_network_names_to_compvis_modules(shared.sd_model) # this should not be needed but is here as an emergency fix for an unknown error people are experiencing in 1.2.0
+    assign_network_names_to_compvis_modules(shared.sd_model)
     keys_failed_to_match = {}
     matched_networks = {}
     bundle_embeddings = {}
@@ -182,11 +182,11 @@ def load_network(name, network_on_disk) -> network.Network:
         else:
             net.modules[key] = net_module
     if len(keys_failed_to_match) > 0:
-        shared.log.warning(f'LoRA name="{name}" type={set(network_types)} unmatched={len(keys_failed_to_match)} matched={len(matched_networks)}')
+        shared.log.warning(f'Load network: type=LoRA name="{name}" type={set(network_types)} unmatched={len(keys_failed_to_match)} matched={len(matched_networks)}')
         if debug:
-            shared.log.debug(f'LoRA name="{name}" unmatched={keys_failed_to_match}')
+            shared.log.debug(f'Load network: type=LoRA name="{name}" unmatched={keys_failed_to_match}')
     else:
-        shared.log.debug(f'LoRA name="{name}" type={set(network_types)} keys={len(matched_networks)}')
+        shared.log.debug(f'Load network: type=LoRA name="{name}" type={set(network_types)} keys={len(matched_networks)}')
     if len(matched_networks) == 0:
         return None
     lora_cache[name] = net

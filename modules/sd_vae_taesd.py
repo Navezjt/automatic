@@ -153,8 +153,9 @@ def decode(latents):
         if not previous_warnings:
             previous_warnings = True
             shared.log.warning(f'TAESD unsupported model type: {model_class}')
-        return Image.new('RGB', (8, 8), color = (0, 0, 0))
-    vae = taesd_models[f'{model_class}-decoder']
+        # return Image.new('RGB', (8, 8), color = (0, 0, 0))
+        return latents
+    vae = taesd_models.get(f'{model_class}-decoder', None)
     if vae is None:
         model_path = os.path.join(paths.models_path, "TAESD", f"tae{model_class}_decoder.pth")
         download_model(model_path)
@@ -169,6 +170,9 @@ def decode(latents):
     if vae is None:
         return latents
     try:
+        size = max(latents.shape[-1], latents.shape[-2])
+        if size > 256:
+            return latents
         with devices.inference_context():
             latents = latents.detach().clone().to(devices.device, dtype)
             if len(latents.shape) == 3:

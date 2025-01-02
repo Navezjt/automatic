@@ -16,7 +16,7 @@ from collections import OrderedDict
 import gradio as gr
 from PIL import Image
 from starlette.responses import FileResponse, JSONResponse
-from modules import paths, shared, scripts, files_cache, errors, infotext
+from modules import paths, shared, files_cache, errors, infotext
 from modules.ui_components import ToolButton
 import modules.ui_symbols as symbols
 
@@ -135,6 +135,7 @@ class ExtraNetworksPage:
         return text.replace('~tabname', tabname)
 
     def create_xyz_grid(self):
+        """
         xyz_grid = [x for x in scripts.scripts_data if x.script_class.__module__ == "xyz_grid.py"][0].module
 
         def add_prompt(p, opt, x):
@@ -150,6 +151,7 @@ class ExtraNetworksPage:
             opt = xyz_grid.AxisOption(f"[Network] {self.title}", str, add_prompt, choices=lambda: [x["name"] for x in self.items])
             if opt not in xyz_grid.axis_options:
                 xyz_grid.axis_options.append(opt)
+        """
 
     def link_preview(self, filename):
         quoted_filename = urllib.parse.quote(filename.replace('\\', '/'))
@@ -201,9 +203,9 @@ class ExtraNetworksPage:
             self.refresh_time = time.time()
         except Exception as e:
             self.items = []
-            shared.log.error(f'Extra networks error listing items: class={self.__class__.__name__} tab={tabname} {e}')
+            shared.log.error(f'Networks: listing items class={self.__class__.__name__} tab={tabname} {e}')
             if os.environ.get('SD_EN_DEBUG', None):
-                errors.display(e, f'Extra networks error listing items: class={self.__class__.__name__} tab={tabname}')
+                errors.display(e, f'Networks: listing items: class={self.__class__.__name__} tab={tabname}')
         for item in self.items:
             if item is None:
                 continue
@@ -275,7 +277,7 @@ class ExtraNetworksPage:
         self.html += ''.join(htmls)
         self.page_time = time.time()
         self.html = f"<div id='~tabname_{self_name_id}_subdirs' class='extra-network-subdirs'>{subdirs_html}</div><div id='~tabname_{self_name_id}_cards' class='extra-network-cards'>{self.html}</div>"
-        shared.log.debug(f"Networks: page='{self.name}' items={len(self.items)} subfolders={len(subdirs)} tab={tabname} folders={self.allowed_directories_for_previews()} list={self.list_time:.2f} thumb={self.preview_time:.2f} desc={self.desc_time:.2f} info={self.info_time:.2f} workers={shared.max_workers} sort={shared.opts.extra_networks_sort}")
+        shared.log.debug(f"Networks: page='{self.name}' items={len(self.items)} subfolders={len(subdirs)} tab={tabname} folders={self.allowed_directories_for_previews()} list={self.list_time:.2f} thumb={self.preview_time:.2f} desc={self.desc_time:.2f} info={self.info_time:.2f} workers={shared.max_workers}")
         if len(self.missing_thumbs) > 0:
             threading.Thread(target=self.create_thumb).start()
         return self.patch(self.html, tabname)
@@ -319,9 +321,9 @@ class ExtraNetworksPage:
                 args['title'] += f'\nAlias: {alias}'
             return self.card.format(**args)
         except Exception as e:
-            shared.log.error(f'Extra networks item error: page={tabname} item={item["name"]} {e}')
+            shared.log.error(f'Networks: item error: page={tabname} item={item["name"]} {e}')
             if os.environ.get('SD_EN_DEBUG', None) is not None:
-                errors.display(e, 'Extra networks')
+                errors.display(e, 'Networks')
             return ""
 
     def find_preview_file(self, path):
@@ -458,17 +460,22 @@ def register_page(page: ExtraNetworksPage):
 
 
 def register_pages():
-    from modules.ui_extra_networks_textual_inversion import ExtraNetworksPageTextualInversion
-    from modules.ui_extra_networks_checkpoints import ExtraNetworksPageCheckpoints
-    from modules.ui_extra_networks_styles import ExtraNetworksPageStyles
-    from modules.ui_extra_networks_vae import ExtraNetworksPageVAEs
-    from modules.ui_extra_networks_history import ExtraNetworksPageHistory
     debug('EN register-pages')
+    from modules.ui_extra_networks_checkpoints import ExtraNetworksPageCheckpoints
+    from modules.ui_extra_networks_vae import ExtraNetworksPageVAEs
+    from modules.ui_extra_networks_styles import ExtraNetworksPageStyles
     register_page(ExtraNetworksPageCheckpoints())
-    register_page(ExtraNetworksPageStyles())
-    register_page(ExtraNetworksPageTextualInversion())
     register_page(ExtraNetworksPageVAEs())
-    register_page(ExtraNetworksPageHistory())
+    register_page(ExtraNetworksPageStyles())
+    if shared.opts.latent_history > 0:
+        from modules.ui_extra_networks_history import ExtraNetworksPageHistory
+        register_page(ExtraNetworksPageHistory())
+    if shared.opts.diffusers_enable_embed:
+        from modules.ui_extra_networks_textual_inversion import ExtraNetworksPageTextualInversion
+        register_page(ExtraNetworksPageTextualInversion())
+    if not shared.opts.lora_legacy:
+        from modules.ui_extra_networks_lora import ExtraNetworksPageLora
+        register_page(ExtraNetworksPageLora())
     if shared.opts.hypernetwork_enabled:
         from modules.ui_extra_networks_hypernets import ExtraNetworksPageHypernetworks
         register_page(ExtraNetworksPageHypernetworks())
@@ -562,7 +569,7 @@ def create_ui(container, button_parent, tabname, skip_indexing = False):
             nonlocal state
             state = SimpleNamespace(**json.loads(state_text))
         except Exception as e:
-            shared.log.error(f'Extra networks state error: {e}')
+            shared.log.error(f'Networks: state error: {e}')
             return
         _page, _item = get_item(state)
         # shared.log.debug(f'Extra network: op={state.op} page={page.title if page is not None else None} item={item.filename if item is not None else None}')
@@ -875,7 +882,7 @@ def create_ui(container, button_parent, tabname, skip_indexing = False):
             page.refresh_time = 0
             page.refresh()
             page.create_page(ui.tabname)
-            shared.log.debug(f"Refreshing Extra networks: page='{page.title}' items={len(page.items)} tab={ui.tabname}")
+            shared.log.debug(f"Networks: refresh page='{page.title}' items={len(page.items)} tab={ui.tabname}")
             pages.append(page.html)
         ui.search.update(title)
         return pages
@@ -889,7 +896,7 @@ def create_ui(container, button_parent, tabname, skip_indexing = False):
             page.card = card_full if page.view == 'gallery' else card_list
             page.html = ''
             page.create_page(ui.tabname)
-            shared.log.debug(f"Refreshing Extra networks: page='{page.title}' items={len(page.items)} tab={ui.tabname} view={page.view}")
+            shared.log.debug(f"Networks: refresh page='{page.title}' items={len(page.items)} tab={ui.tabname} view={page.view}")
             pages.append(page.html)
         ui.search.update(title)
         return pages
@@ -941,7 +948,7 @@ def create_ui(container, button_parent, tabname, skip_indexing = False):
         if shared.opts.extra_networks_sort != sort_order:
             shared.opts.extra_networks_sort = sort_order
             shared.opts.save(shared.config_filename)
-        return f'Extra networks sort={sort_order}'
+        return f'Networks: sort={sort_order}'
 
     dummy = gr.State(value=False) # pylint: disable=abstract-class-instantiated
     button_parent.click(fn=toggle_visibility, inputs=[ui.visible], outputs=[ui.visible, container, button_parent])

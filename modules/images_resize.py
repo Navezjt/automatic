@@ -5,13 +5,13 @@ from PIL import Image
 from modules import shared
 
 
-def resize_image(resize_mode, im, width, height, upscaler_name=None, output_type='image', context=None):
+def resize_image(resize_mode: int, im: Image.Image, width: int, height: int, upscaler_name: str=None, output_type: str='image', context: str=None):
     upscaler_name = upscaler_name or shared.opts.upscaler_for_img2img
 
     def latent(im, w, h, upscaler):
         from modules.processing_vae import vae_encode, vae_decode
         import torch
-        latents = vae_encode(im, shared.sd_model, full_quality=False) # TODO enable full VAE mode for resize-latent
+        latents = vae_encode(im, shared.sd_model, full_quality=False) # TODO resize image: enable full VAE mode for resize-latent
         latents = torch.nn.functional.interpolate(latents, size=(int(h // 8), int(w // 8)), mode=upscaler["mode"], antialias=upscaler["antialias"])
         im = vae_decode(latents, shared.sd_model, output_type='pil', full_quality=False)[0]
         return im
@@ -79,18 +79,18 @@ def resize_image(resize_mode, im, width, height, upscaler_name=None, output_type
 
     def context_aware(im, width, height, context):
         import seam_carving # https://github.com/li-plus/seam-carving
-        if 'forward' in context:
+        if 'forward' in context.lower():
             energy_mode = "forward"
-        elif 'backward' in context:
+        elif 'backward' in context.lower():
             energy_mode = "backward"
         else:
             return im
-        if 'Add' in context:
+        if 'add' in context.lower():
             src_ratio = min(width / im.width, height / im.height)
             src_w = int(im.width * src_ratio)
             src_h = int(im.height * src_ratio)
             src_image = resize(im, src_w, src_h)
-        elif 'Remove' in context:
+        elif 'remove' in context.lower():
             ratio = width / height
             src_ratio = im.width / im.height
             src_w = width if ratio > src_ratio else im.width * height // im.height
@@ -122,12 +122,12 @@ def resize_image(resize_mode, im, width, height, upscaler_name=None, output_type
         from modules import masking
         res = fill(im, color=0)
         res, _mask = masking.outpaint(res)
-    elif resize_mode == 5:  # context-aware
+    elif resize_mode == 5: # context-aware
         res = context_aware(im, width, height, context)
     else:
         res = im.copy()
         shared.log.error(f'Invalid resize mode: {resize_mode}')
     t1 = time.time()
     fn = f'{sys._getframe(2).f_code.co_name}:{sys._getframe(1).f_code.co_name}' # pylint: disable=protected-access
-    shared.log.debug(f'Image resize: input={im} width={width} height={height} mode="{shared.resize_modes[resize_mode]}" upscaler="{upscaler_name}" context="{context}" type={output_type} result={res} time={t1-t0:.2f} fn={fn}') # pylint: disable=protected-access
+    shared.log.debug(f'Image resize: source={im.width}:{im.height} target={width}:{height} mode="{shared.resize_modes[resize_mode]}" upscaler="{upscaler_name}" type={output_type} time={t1-t0:.2f} fn={fn}') # pylint: disable=protected-access
     return np.array(res) if output_type == 'np' else res

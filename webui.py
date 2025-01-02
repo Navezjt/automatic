@@ -8,16 +8,18 @@ import logging
 import importlib
 import contextlib
 from threading import Thread
+import modules.hashes
 import modules.loader
 import torch # pylint: disable=wrong-import-order
 from modules import timer, errors, paths # pylint: disable=unused-import
 from installer import log, git_commit, custom_excepthook
-import ldm.modules.encoders.modules # pylint: disable=unused-import, wrong-import-order
+# import ldm.modules.encoders.modules # pylint: disable=unused-import, wrong-import-order
 from modules import shared, extensions, gr_tempdir, modelloader # pylint: disable=ungrouped-imports
 from modules import extra_networks, ui_extra_networks # pylint: disable=ungrouped-imports
 from modules.paths import create_paths
 from modules.call_queue import queue_lock, wrap_queued_call, wrap_gradio_gpu_call # pylint: disable=unused-import
 import modules.devices
+import modules.sd_checkpoint
 import modules.sd_samplers
 import modules.lowvram
 import modules.scripts
@@ -77,7 +79,12 @@ def check_rollback_vae():
 
 def initialize():
     log.debug('Initializing')
+
+    modules.sd_checkpoint.init_metadata()
+    modules.hashes.init_cache()
     check_rollback_vae()
+
+    log.debug(f'Huggingface cache: path="{shared.opts.hfcache_dir}"')
 
     modules.sd_samplers.list_samplers()
     timer.startup.record("samplers")
@@ -89,14 +96,19 @@ def initialize():
     timer.startup.record("unet")
 
     modules.model_te.refresh_te_list()
-    timer.startup.record("unet")
-
-    extensions.list_extensions()
-    timer.startup.record("extensions")
+    timer.startup.record("te")
 
     modelloader.cleanup_models()
     modules.sd_models.setup_model()
     timer.startup.record("models")
+
+    if not shared.opts.lora_legacy:
+        import modules.lora.networks as lora_networks
+        lora_networks.list_available_networks()
+        timer.startup.record("lora")
+
+    shared.prompt_styles.reload()
+    timer.startup.record("styles")
 
     import modules.postprocess.codeformer_model as codeformer
     codeformer.setup_model(shared.opts.codeformer_models_path)
@@ -107,6 +119,9 @@ def initialize():
     yolo.initialize()
     timer.startup.record("detailer")
 
+    extensions.list_extensions()
+    timer.startup.record("extensions")
+
     log.info('Load extensions')
     t_timer, t_total = modules.scripts.load_scripts()
     timer.startup.record("extensions")
@@ -116,8 +131,9 @@ def initialize():
     modelloader.load_upscalers()
     timer.startup.record("upscalers")
 
-    shared.reload_hypernetworks()
-    shared.prompt_styles.reload()
+    if shared.opts.hypernetwork_enabled:
+        shared.reload_hypernetworks()
+        timer.startup.record("hypernetworks")
 
     ui_extra_networks.initialize()
     ui_extra_networks.register_pages()
@@ -212,7 +228,7 @@ def start_common():
     if shared.cmd_opts.data_dir is not None and len(shared.cmd_opts.data_dir) > 0:
         log.info(f'Using data path: {shared.cmd_opts.data_dir}')
     if shared.cmd_opts.models_dir is not None and len(shared.cmd_opts.models_dir) > 0 and shared.cmd_opts.models_dir != 'models':
-        log.info(f'Using models path: {shared.cmd_opts.models_dir}')
+        log.info(f'Models path: {shared.cmd_opts.models_dir}')
     create_paths(shared.opts)
     async_policy()
     initialize()
@@ -228,7 +244,7 @@ def start_common():
 
 
 def start_ui():
-    log.info('UI start')
+    log.debug('UI start sequence')
     modules.script_callbacks.before_ui_callback()
     timer.startup.record("before-ui")
     shared.demo = modules.ui.create_ui(timer.startup)
@@ -287,7 +303,7 @@ def start_ui():
         shared.log.info(f'API ReDocs: {local_url[:-1]}/redocs') # pylint: disable=unsubscriptable-object
     if share_url is not None:
         shared.log.info(f'Share URL: {share_url}')
-    shared.log.debug(f'Gradio functions: registered={len(shared.demo.fns)}')
+    # shared.log.debug(f'Gradio functions: registered={len(shared.demo.fns)}')
     shared.demo.server.wants_restart = False
     setup_middleware(app, cmd_opts)
 
@@ -307,8 +323,10 @@ def start_ui():
     modules.script_callbacks.app_started_callback(shared.demo, app)
     timer.startup.record("app-started")
 
-    time_setup = [f'{k}:{round(v,3)}' for (k,v) in modules.scripts.time_setup.items() if v > 0.005]
-    shared.log.debug(f'Scripts setup: {time_setup}')
+    time_sorted = sorted(modules.scripts.time_setup.items(), key=lambda x: x[1], reverse=True)
+    time_script = [f'{k}:{round(v,3)}' for (k,v) in time_sorted if v > 0.01]
+    time_total = sum(modules.scripts.time_setup.values())
+    shared.log.debug(f'Scripts setup: time={time_total:.3f} {time_script}')
     time_component = [f'{k}:{round(v,3)}' for (k,v) in modules.scripts.time_component.items() if v > 0.005]
     if len(time_component) > 0:
         shared.log.debug(f'Scripts components: {time_component}')

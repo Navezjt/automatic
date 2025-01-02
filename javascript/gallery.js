@@ -94,14 +94,14 @@ async function delayFetchThumb(fn) {
   outstanding++;
   const res = await fetch(`/sdapi/v1/browser/thumb?file=${encodeURI(fn)}`, { priority: 'low' });
   if (!res.ok) {
-    console.error(res.statusText);
+    error(`fetchThumb: ${res.statusText}`);
     outstanding--;
     return undefined;
   }
   const json = await res.json();
   outstanding--;
   if (!res || !json || json.error || Object.keys(json).length === 0) {
-    if (json.error) console.error(json.error);
+    if (json.error) error(`fetchThumb: ${json.error}`);
     return undefined;
   }
   return json;
@@ -396,6 +396,7 @@ async function initGallery() { // triggered on gradio change to monitor when ui 
   el.search = gradioApp().querySelector('#tab-gallery-search textarea');
   el.search.addEventListener('input', gallerySearch);
   el.btnSend = gradioApp().getElementById('tab-gallery-send-image');
+  document.getElementById('tab-gallery-files').style.height = opts.logmonitor_show ? '75vh' : '85vh';
 
   const intersectionObserver = new IntersectionObserver((entries) => {
     if (entries[0].intersectionRatio <= 0) galleryHidden();

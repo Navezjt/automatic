@@ -379,6 +379,7 @@ class Script(scripts.Script):
             )
 
         if not processed.images:
+            active = False
             return processed # something broke, no further handling needed.
         # processed.images = (1)*grid + (z > 1 ? z : 0)*subgrids + (x*y*z)*images
         have_grid = 1 if include_grid else 0
@@ -413,6 +414,7 @@ class Script(scripts.Script):
 
         p.do_not_save_grid = True
         p.do_not_save_samples = True
+        p.disable_extra_networks = True
         active = False
         cache = processed
         return processed
